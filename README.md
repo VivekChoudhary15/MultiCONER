@@ -4,27 +4,18 @@ A clean, modular, observable training pipeline for fine-grained multilingual Nam
 Entity Recognition on the **MultiCoNER 2** dataset (SemEval 2023 Task 2). Built on
 HuggingFace Transformers (XLM-RoBERTa / mDeBERTa) with PyTorch.
 
-## What this implements
+## Implemented baseline (Ablation A0)
 
-A strong, reproducible baseline modeled on the top MultiCoNER shared-task systems:
-a fine-tuned multilingual transformer for token-level NER over the fine-grained
-taxonomy, trained end-to-end with validation-based model selection.
+The current pipeline implements **Ablation 0 (A0)**, the plain baseline from the
+proposed multi-component approach:
 
-### Key capabilities
-- **Multi-language / multilingual tracks**: train on one language or all language
-  folders (incl. `MULTI-Multilingual`) in a single pooled model.
-- **Configurable backbone**: `xlm-roberta-base` (default), `xlm-roberta-large`,
-  `microsoft/mdeberta-v3-base`, etc.
-- **Observability**: TensorBoard logging of train loss, dev loss, dev overall +
-  per-entity-type precision/recall/F1, learning rate, and hyperparameters.
-- **Model selection & checkpointing**: best model saved by dev F1; per-epoch
-  checkpoints; early stopping on dev F1.
-- **Clean modular pipeline**: `data.py`, `model.py`, `trainer.py`, `evaluate.py`,
-  `inference.py`, `pipeline.py`, `config.py`, `main.py`.
-- **Saved artifacts**: model weights, tokenizer, label maps (`label2id`/`id2label`),
-  pipeline config, training history, and a training summary JSON.
-- **Test predictions**: per-language CoNLL + JSON predictions and metrics, plus a
-  pooled micro-average across languages.
+| A0 component | Status | Details |
+|--------------|--------|---------|
+| **Data prep** | ✅ | CoNLL streaming parser; all tag sequences are **BIO-repaired** (orphan/mismatched `I-` tags promoted to `B-`). |
+| **Baseline** | ✅ | **XLM-RoBERTa + linear-chain CRF** token classifier (`use_crf=True` by default). |
+| **Language sampling** | ✅ | Multilingual training uses a **language-balanced sampler** so each language contributes equally per batch (prevents EN/ES/FR from dominating BN/HI/FA). |
+
+The pipeline does **not yet** include S3–S7 (retrieval, context filter, noise training, gated fusion, ensemble). Those are planned as phases A1–A5 on top of A0.
 
 ## Repository layout
 
@@ -32,10 +23,19 @@ taxonomy, trained end-to-end with validation-based model selection.
 MultiCoNER/
 ├── dataset/multiconer2023/   # CoNLL files (your existing data)
 ├── src/multiconer_ner/       # pipeline package
+│   ├── config.py             # all hyperparameters / paths (A0 defaults)
+│   ├── data.py               # CoNLL parser, BIO repair, label alignment, DataLoaders, language-balanced sampler
+│   ├── model.py              # MultilingualNER (XLM-R + CRF head, save/load)
+│   ├── trainer.py            # train/val loop, TensorBoard, checkpoints, early stopping on dev F1
+│   ├── evaluate.py           # seqeval P/R/F1 overall & per entity type
+│   ├── inference.py          # prediction + CoNLL/JSON output
+│   ├── pipeline.py           # orchestrate train -> evaluate -> predict -> save (A0)
+│   └── main.py               # CLI entry point
 ├── models/                   # saved models (created at runtime)
 ├── runs/                     # TensorBoard event files (created at runtime)
 ├── outputs/                  # test predictions & metrics (created at runtime)
 ├── requirements.txt
+├── README.md
 └── multiconer2023_data_analytics.ipynb   # your existing notebook (untouched)
 ```
 
@@ -44,6 +44,7 @@ MultiCoNER/
 ### 1. Activate the project virtual environment
 
 ```powershell
+cd C:\Users\offic\Documents\Projects\MultiCoNER
 .\.venv\Scripts\Activate.ps1
 ```
 
@@ -53,13 +54,13 @@ MultiCoNER/
 pip install -r requirements.txt
 ```
 
-### 3. Train on a single language (e.g. English)
+### 3. Train the A0 baseline on a single language (e.g. English)
 
 ```powershell
 python -m src.multiconer_ner.main --language EN-English --epochs 5 --batch-size 16
 ```
 
-### 4. Train multilingual (all languages pooled)
+### 4. Train A0 multilingual (all languages pooled, language-balanced sampling)
 
 ```powershell
 python -m src.multiconer_ner.main --multilingual --epochs 5 --batch-size 16
@@ -71,12 +72,14 @@ python -m src.multiconer_ner.main --multilingual --epochs 5 --batch-size 16
 python -m src.multiconer_ner.main --language EN-English --model xlm-roberta-large --epochs 5
 ```
 
+or `microsoft/mdeberta-v3-base` / `microsoft/mdeberta-v3-large`.
+
 ## CLI options
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--language` | `EN-English` | Language folder, or `all` for every folder. |
-| `--multilingual` | off | Train on all language folders (pooled). |
+| `--multilingual` | off | Train on all language folders (pooled, language-balanced sampling). |
 | `--model` | `xlm-roberta-base` | HF model id. |
 | `--data-root` | `dataset/multiconer2023` | Path to the CoNLL dataset root. |
 | `--epochs` | `5` | Training epochs. |
@@ -84,36 +87,50 @@ python -m src.multiconer_ner.main --language EN-English --model xlm-roberta-larg
 | `--lr` | `3e-5` | Learning rate. |
 | `--max-length` | `256` | Max sequence length (tokens). |
 | `--experiment-name` | `multiconer_ner` | Subfolder under `runs/` and `models/`. |
-| `--use-crf` | off | Add a CRF layer (needs `torchcrf`). |
-| `--freeze-backbone` | off | Freeze the transformer backbone. |
+| `--use-crf` | on (A0 default) | Enable linear-chain CRF (default True for A0 baseline). |
+| `--freeze-backbone` | off | Freeze the transformer backbone (feature extraction). |
 
 ## Outputs
 
-- `models/<experiment_name>/best_model/` — best model, tokenizer, label maps,
-  config, training summary JSON.
-- `runs/<experiment_name>/` — TensorBoard logs (`tensorboard --logdir runs`).
-- `outputs/<experiment_name>/<language>/` — per-language CoNLL/JSON predictions
-  and metrics.
-- `outputs/<experiment_name>/pooled_test_metrics.json` — pooled micro metrics.
+After a run you will find:
 
-## Reload a saved model
+- `models/<experiment_name>/best_model/`
+  - `pipeline_config.json` — full config used
+  - `training_summary.json` — best dev F1, per-language + pooled test metrics
+  - `label2id.json`, `id2label.json` — label mappings
+  - `model_config.json` — backbone + num_labels + use_crf
+  - tokenizer files + model weights + `crf.bin`
+- `runs/<experiment_name>/` — TensorBoard logs. Launch with:
+  ```powershell
+  tensorboard --logdir runs
+  ```
+- `outputs/<experiment_name>/<language>/`
+  - `test_predictions.conll` — token<TAB>pred_tag CoNLL predictions
+  - `test_predictions.json` — predictions + true tags
+  - `test_metrics.json` — per-language precision/recall/F1 by entity type
+- `outputs/<experiment_name>/pooled_test_metrics.json` — pooled micro metrics
+
+## Reload a saved model for inference
 
 ```python
 from src.multiconer_ner.model import MultilingualNER
 
 model = MultilingualNER.load("models/multiconer_ner/best_model")
 model.eval()
-model.predict_tags(input_ids, attention_mask)
+tags = model.predict_tags(input_ids, attention_mask)  # Viterbi-decoded via CRF
 ```
 
 ## Notes
 
 - Your existing notebook `multiconer2023_data_analytics.ipynb` was **not modified**.
 - The pipeline builds the BIO label set automatically from the tags in your
-  training split, so it adapts to the exact taxonomy present.
-- MultiCoNER 2 adds keyboard-layout noise to ~30% of test instances. The pipeline
-  trains on clean train/dev and evaluates on the test split, matching the
-  shared-task protocol.
+  training split (67 labels for the standard MultiCoNER 2 taxonomy).
+- All sentences are **BIO-repaired** before training, so invalid `I-` tags
+  (e.g. `O I-PER`, `B-LOC I-ORG`) are promoted to `B-` and the sequence stays valid.
+- MultiCoNER 2 adds keyboard-layout noise to ~30% of test instances (EN, DE, IT,
+  FR, ES, ZH, PT, SV). The A0 baseline trains on clean train/dev and evaluates on
+  the test split. Noise-robust training (A3) is planned as a future phase.
+- `torchcrf` is required for the CRF head and is listed in `requirements.txt`.
 
 ## Requirements
 
@@ -124,6 +141,6 @@ seqeval>=1.2.0
 tensorboard>=2.0.0
 tqdm>=4.60.0
 pyyaml>=6.0
+sentencepiece>=0.2.0
+torchcrf>=1.1.0
 ```
-
-Optional: `torchcrf` (for `--use-crf`).

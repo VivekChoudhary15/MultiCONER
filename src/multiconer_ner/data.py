@@ -4,20 +4,24 @@ Data layer for MultiCoNER multilingual NER.
 Responsibilities:
   * Stream CoNLL files one sentence at a time (memory friendly for the
     multi-million-token test splits).
+  * Repair invalid BIO sequences so every training example is a valid BIO tag
+    sequence.
   * Build the BIO label set from the tags observed in the training data.
   * Align NER labels to subword tokens produced by a HF tokenizer.
-  * Build PyTorch DataLoaders for train / val / test.
+  * Build PyTorch DataLoaders for train / val / test, including a
+    language-balanced sampler for multilingual training.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from math import ceil
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Sampler
 from transformers import PreTrainedTokenizerBase
 
 # A valid CoNLL token row: four whitespace-separated columns, last column a tag like O / B-X / I-X.
@@ -37,6 +41,54 @@ class Sentence:
     domain: Optional[str] = None
 
 
+def repair_bio_tags(tags: Sequence[str]) -> List[str]:
+    """
+    Repair an invalid BIO tag sequence into a valid one.
+
+    Rules:
+      * "O" stays "O" and resets the previous entity type.
+      * "B-X" stays "B-X" and starts a new span of type X.
+      * "I-X" stays "I-X" only if the previous tag was "B-X" or "I-X" of the
+        same type. Otherwise it is converted to "B-X" (orphan or mismatched I-).
+
+    Parameters
+    ----------
+    tags : sequence of str
+        Input BIO tags (possibly invalid).
+
+    Returns
+    -------
+    list of str
+        Repaired BIO tags.
+    """
+    repaired: List[str] = []
+    prev_type: Optional[str] = None  # entity type of the previous B-/I- tag
+
+    for tag in tags:
+        if tag == "O":
+            repaired.append("O")
+            prev_type = None
+        elif tag.startswith("B-"):
+            etype = tag[2:]
+            repaired.append(tag)
+            prev_type = etype
+        elif tag.startswith("I-"):
+            etype = tag[2:]
+            if prev_type == etype:
+                repaired.append(tag)
+            else:
+                # Orphan I- or mismatched I- (e.g. O I-PER, or B-LOC I-ORG).
+                # Promote to B- so the sequence stays valid BIO.
+                repaired.append(f"B-{etype}")
+                prev_type = etype
+        else:
+            # Unknown tag format: keep as-is but break the current span.
+            repaired.append(tag)
+            prev_type = None
+
+    return repaired
+
+
 def _parse_meta(line: str) -> Tuple[Optional[str], Optional[str]]:
     """Extract (domain, corrupt) from a '# ...' metadata header line."""
     fields = dict(_META_RE.findall(line))
@@ -53,7 +105,8 @@ def stream_conll(
     """Parse one CoNLL file into a list of Sentence objects.
 
     The file is read line-by-line; blank lines terminate a sentence so we
-    never materialize the whole file as token-level records.
+    never materialize the whole file as token-level records. Every sentence's
+    BIO tags are repaired before being stored.
     """
     sentences: List[Sentence] = []
     tokens: List[str] = []
@@ -67,7 +120,7 @@ def stream_conll(
             sentences.append(
                 Sentence(
                     tokens=list(tokens),
-                    tags=list(tags),
+                    tags=repair_bio_tags(list(tags)),
                     language=language,
                     split=split,
                     doc_id=doc_id,
@@ -117,6 +170,7 @@ def load_split_sentences(
     """Load all sentences for a given (language, split) from data_root.
 
     Expected file: <data_root>/<language>/*_{split}.conll
+    All returned sentences have repaired BIO tags.
     """
     data_root = Path(data_root)
     lang_folder = data_root / language
@@ -222,6 +276,65 @@ class NERDataset(Dataset):
         }
 
 
+class LanguageBalancedSampler(Sampler[int]):
+    """
+    Sampler that draws examples from a ConcatDataset such that each language
+    is sampled with (approximately) equal probability, regardless of how many
+    sentences that language contributes.
+
+    This prevents high-resource languages (EN, ES, FR) from dominating
+    multilingual training batches.
+    """
+
+    def __init__(
+        self,
+        dataset_sizes: Sequence[int],
+        temperature: float = 1.0,
+        num_samples: Optional[int] = None,
+        generator: Optional[torch.Generator] = None,
+    ):
+        self.dataset_sizes = list(dataset_sizes)
+        self.num_languages = len(self.dataset_sizes)
+        self.temperature = temperature
+        self.num_samples = num_samples or sum(self.dataset_sizes)
+        self.generator = generator or torch.Generator()
+
+        # Cumulative offsets to map (language, local_index) -> global index.
+        self.cumulative_sizes: List[int] = [0]
+        for size in self.dataset_sizes:
+            self.cumulative_sizes.append(self.cumulative_sizes[-1] + size)
+
+        # Equal probability per language, temperature-scaled.
+        lang_weights = [1.0] * self.num_languages
+        if temperature != 1.0:
+            lang_weights = [w ** (1.0 / temperature) for w in lang_weights]
+        total = sum(lang_weights)
+        self.lang_weights = [w / total for w in lang_weights]
+
+    def __iter__(self) -> Iterator[int]:
+        import random
+
+        for _ in range(self.num_samples):
+            # Pick a language according to lang_weights.
+            r = random.random()
+            cumulative = 0.0
+            lang_idx = self.num_languages - 1
+            for i, w in enumerate(self.lang_weights):
+                cumulative += w
+                if r < cumulative:
+                    lang_idx = i
+                    break
+
+            # Pick a random sentence from that language.
+            lang_size = self.dataset_sizes[lang_idx]
+            local_idx = int(torch.randint(0, lang_size, (1,), generator=self.generator).item())
+            global_idx = self.cumulative_sizes[lang_idx] + local_idx
+            yield global_idx
+
+    def __len__(self) -> int:
+        return self.num_samples
+
+
 def make_dataloaders(
     *,
     train_sentences: Sequence[Sentence],
@@ -232,8 +345,16 @@ def make_dataloaders(
     data_config: DataConfig,
     train_batch_size: int,
     val_batch_size: int,
+    language_sampling_temperature: float = 1.0,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
-    """Build train / val / test DataLoaders sharing one label space."""
+    """Build train / val / test DataLoaders sharing one label space.
+
+    If ``data_config.multilingual`` is True, the train loader uses a
+    language-balanced sampler so each language contributes equally to each
+    epoch. Val and test loaders are pooled (simple ConcatDataset).
+    """
+    from torch.utils.data import ConcatDataset
+
     train_ds = NERDataset(
         train_sentences,
         tokenizer,
@@ -256,9 +377,31 @@ def make_dataloaders(
         lowercase=data_config.lowercase,
     )
 
-    train_loader = DataLoader(
-        train_ds, batch_size=train_batch_size, shuffle=True, drop_last=False
-    )
+    # Train loader.
+    if data_config.multilingual:
+        # Compute per-language sizes in the concatenated train dataset.
+        # NERDataset does not store language per example in a directly
+        # accessible way, so we reconstruct sizes from the input sentences.
+        lang_to_count: Dict[str, int] = {}
+        for s in train_sentences:
+            lang_to_count[s.language] = lang_to_count.get(s.language, 0) + 1
+        sizes = [lang_to_count[lang] for lang in sorted(lang_to_count)]
+
+        sampler = LanguageBalancedSampler(
+            sizes,
+            temperature=language_sampling_temperature,
+        )
+        train_loader = DataLoader(
+            train_ds,
+            batch_size=train_batch_size,
+            sampler=sampler,
+            shuffle=False,  # sampler handles ordering
+        )
+    else:
+        train_loader = DataLoader(
+            train_ds, batch_size=train_batch_size, shuffle=True, drop_last=False
+        )
+
     val_loader = DataLoader(
         val_ds, batch_size=val_batch_size, shuffle=False, drop_last=False
     )
@@ -266,3 +409,22 @@ def make_dataloaders(
         test_ds, batch_size=val_batch_size, shuffle=False, drop_last=False
     )
     return train_loader, val_loader, test_loader
+
+
+def make_language_balanced_loader(
+    datasets: Sequence[Dataset],
+    batch_size: int,
+    temperature: float = 1.0,
+    shuffle: bool = True,
+) -> DataLoader:
+    """
+    Build a DataLoader over a ConcatDataset of per-language datasets using
+    LanguageBalancedSampler. Useful when you already have separate datasets
+    per language and want a single balanced training stream.
+    """
+    from torch.utils.data import ConcatDataset
+
+    concat = ConcatDataset(list(datasets))
+    sizes = [len(d) for d in datasets]
+    sampler = LanguageBalancedSampler(sizes, temperature=temperature)
+    return DataLoader(concat, batch_size=batch_size, sampler=sampler, shuffle=False)

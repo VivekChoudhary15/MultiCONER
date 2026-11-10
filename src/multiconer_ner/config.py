@@ -49,8 +49,9 @@ class ModelConfig:
     #   "xlm-roberta-large" (stronger, slower)
     #   "microsoft/mdeberta-v3-base" / "...-v3-large"
     model_name: str = "xlm-roberta-base"
-    # If True, load a CRF layer on top of the classifier (requires torchcrf).
-    use_crf: bool = False
+    # If True, load a CRF layer on top of the classifier.
+    # The A0 baseline uses CRF, so this defaults to True.
+    use_crf: bool = True
     # Dropout probability for the classification head.
     classifier_dropout: float = 0.1
     # Whether to freeze the transformer backbone (feature-extraction mode).
@@ -80,6 +81,9 @@ class TrainConfig:
     early_stopping_patience: int = 3
     # Mixed precision (False on CPU).
     fp16: bool = False
+    # Temperature for language-balanced sampling (1.0 = equal per language).
+    # Only used when data_config.multilingual is True.
+    language_sampling_temperature: float = 1.0
 
 
 @dataclass

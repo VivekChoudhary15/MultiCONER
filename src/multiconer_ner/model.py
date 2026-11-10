@@ -18,6 +18,61 @@ import torch.nn as nn
 from transformers import AutoModel, AutoConfig, PreTrainedTokenizerBase
 
 
+# ---------------------------------------------------------------------------
+# Compatibility wrapper around the installed CRF package.
+#
+# PyPI distributes the CRF implementation under the mixed-case name "TorchCRF"
+# (forward(h, labels, mask) + viterbi_decode(h, mask)), while the canonical
+# "torchcrf" API uses (emissions, tags, mask) forward + decode(emissions, mask).
+# This wrapper normalises both to a single interface used by MultilingualNER.
+# ---------------------------------------------------------------------------
+class _CRF(nn.Module):
+    """Unified CRF interface: forward(emissions, tags, mask) -> loss;
+    decode(emissions, mask) -> List[List[int]]."""
+
+    def __init__(self, num_labels: int):
+        super().__init__()
+        backend = None
+        try:
+            from torchcrf import CRF as _CRFBackend  # type: ignore
+            backend = _CRFBackend(num_labels, batch_first=True)
+            self._kind = "torchcrf"
+        except Exception:
+            try:
+                from TorchCRF import CRF as _CRFBackend  # type: ignore
+                backend = _CRFBackend(num_labels)  # no batch_first arg
+                self._kind = "TorchCRF"
+            except Exception as exc:
+                raise ImportError(
+                    "Neither torchcrf nor TorchCRF is installable/importable: "
+                    f"{exc}"
+                ) from exc
+        self.backend = backend
+
+    def forward(
+        self, emissions: torch.Tensor, tags: torch.Tensor, mask: torch.BoolTensor
+    ) -> torch.Tensor:
+        """Return mean negative log-likelihood (scalar)."""
+        if self._kind == "torchcrf":
+            # torchcrf.forward already returns mean NLL over the batch.
+            return self.backend(emissions, tags, mask=mask, reduction="mean")
+        # TorchCRF: forward(h, labels, mask) may return per-sequence or summed NLL.
+        # Force it to a scalar mean over the batch.
+        nll = self.backend(emissions, tags, mask)
+        if nll.dim() > 0:
+            nll = nll.mean()
+        return nll
+
+    def decode(
+        self, emissions: torch.Tensor, mask: torch.BoolTensor
+    ) -> list:
+        """Return best tag-index sequences (List[List[int]])."""
+        if self._kind == "torchcrf":
+            return self.backend.decode(emissions, mask)
+        # TorchCRF: viterbi_decode(h, mask).
+        return self.backend.viterbi_decode(emissions, mask)
+
+
 class MultilingualNER(nn.Module):
     """
     Multilingual NER model.
@@ -58,13 +113,9 @@ class MultilingualNER(nn.Module):
         self.crf = None
         if use_crf:
             try:
-                from torchcrf import CRF  # type: ignore
-
-                self.crf = CRF(num_labels, batch_first=True)
-            except Exception as exc:  # pragma: no cover - optional dependency
-                print(
-                    f"[model] torchcrf not available ({exc}); falling back to linear head."
-                )
+                self.crf = _CRF(num_labels)
+            except ImportError as exc:
+                print(f"[model] {exc}; falling back to linear head.")
                 self.use_crf = False
 
         if freeze_backbone:
@@ -89,7 +140,8 @@ class MultilingualNER(nn.Module):
             if self.use_crf and self.crf is not None:
                 mask = attention_mask.bool()
                 crf_labels = labels.clamp(min=0)
-                loss = -self.crf(logits, crf_labels, mask=mask, reduction="mean")
+                # CRF negative log-likelihood (wrapper returns mean NLL).
+                loss = self.crf(logits, crf_labels, mask)
             else:
                 active_loss = attention_mask.view(-1) == 1
                 active_logits = logits.view(-1, self.num_labels)[active_loss]
@@ -106,7 +158,11 @@ class MultilingualNER(nn.Module):
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
     ) -> list:
-        """Return predicted tag strings (list of lists), one per batch item."""
+        """Return predicted tag strings (list of lists), one per batch item.
+
+        When a CRF is attached, Viterbi decoding is used so the output tag
+        sequence is guaranteed to be a valid BIO path.
+        """
         self.eval()
         with torch.no_grad():
             outputs = self.forward(
@@ -115,22 +171,33 @@ class MultilingualNER(nn.Module):
         logits = outputs["logits"]  # (B, T, L)
         mask = attention_mask.bool()
         predictions: list = []
-        for i in range(logits.shape[0]):
-            seq_mask = mask[i]
-            seq_logits = logits[i][seq_mask]
-            pred_ids = seq_logits.argmax(dim=-1).tolist()
-            predictions.append([self.id2label[p] for p in pred_ids])
+
+        if self.use_crf and self.crf is not None:
+            # torchcrf.decode returns List[List[int]] (best tag index sequence).
+            best_paths = self.crf.decode(logits, mask)
+            for path in best_paths:
+                predictions.append([self.id2label[p] for p in path])
+        else:
+            for i in range(logits.shape[0]):
+                seq_mask = mask[i]
+                seq_logits = logits[i][seq_mask]
+                pred_ids = seq_logits.argmax(dim=-1).tolist()
+                predictions.append([self.id2label[p] for p in pred_ids])
+
         return predictions
 
     def save(self, output_dir: str | Path, tokenizer: PreTrainedTokenizerBase) -> None:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Backbone weights.
+        # Backbone weights + config.
         self.backbone.save_pretrained(output_dir)
         # Classifier + dropout weights.
         torch.save(self.classifier.state_dict(), output_dir / "classifier.bin")
         torch.save(self.dropout.state_dict(), output_dir / "dropout.bin")
+        # CRF weights (if present).
+        if self.use_crf and self.crf is not None:
+            torch.save(self.crf.state_dict(), output_dir / "crf.bin")
 
         # Tokenizer.
         tokenizer.save_pretrained(output_dir)
@@ -167,6 +234,7 @@ class MultilingualNER(nn.Module):
             use_crf=model_cfg.get("use_crf", False),
         )
         model.backbone = AutoModel.from_pretrained(output_dir)
+
         classifier_path = output_dir / "classifier.bin"
         if classifier_path.exists():
             model.classifier.load_state_dict(
@@ -177,4 +245,8 @@ class MultilingualNER(nn.Module):
             model.dropout.load_state_dict(
                 torch.load(dropout_path, map_location="cpu")
             )
+        crf_path = output_dir / "crf.bin"
+        if model.use_crf and crf_path.exists():
+            model.crf.load_state_dict(torch.load(crf_path, map_location="cpu"))
+
         return model
