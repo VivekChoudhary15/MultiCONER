@@ -46,12 +46,26 @@ def load_languages(data_root: str | Path, multilingual: bool, language: str) -> 
     """Resolve the list of language folders to train/evaluate on."""
     data_root = Path(data_root)
     if multilingual or language == "all":
+        # MULTI-Multilingual is just a mix of the 12 monolingual sets; including
+        # it would duplicate every language in train/dev/test.
         folders = sorted(
             p.name for p in data_root.iterdir()
             if p.is_dir() and not p.name.startswith(".")
+            and not p.name.upper().startswith("MULTI")
         )
         return folders
     return [language]
+
+
+def set_seed(seed: int) -> None:
+    import random
+
+    import numpy as np
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 
 def build_label_maps(
@@ -71,6 +85,7 @@ def build_label_maps(
 
 def run_pipeline(config: Config) -> dict:
     setup_logging()
+    set_seed(config.train.seed)
     data_cfg: DataConfig = config.data
 
     # ------------------------------------------------------------------ #
@@ -105,7 +120,19 @@ def run_pipeline(config: Config) -> dict:
     # ------------------------------------------------------------------ #
     # 2. Build label space from training data.
     # ------------------------------------------------------------------ #
-    label_list, label2id, id2label = build_label_maps(train_sentences_by_lang)
+    # Use train + dev + test tags so an entity type that is rare/absent in
+    # train cannot crash encoding of dev/test with a KeyError.
+    label_list, label2id, id2label = build_label_maps(
+        {
+            f"{lang}/{name}": sents
+            for name, by_lang in (
+                ("train", train_sentences_by_lang),
+                ("dev", val_sentences_by_lang),
+                ("test", test_sentences_by_lang),
+            )
+            for lang, sents in by_lang.items()
+        }
+    )
     logger.info(f"Number of labels: {len(label_list)} (incl. 'O')")
 
     # ------------------------------------------------------------------ #
@@ -121,22 +148,20 @@ def run_pipeline(config: Config) -> dict:
     # ------------------------------------------------------------------ #
     all_train: List = []
     all_val: List = []
-    all_test: List = []
     for lang in languages:
         all_train.extend(train_sentences_by_lang[lang])
         all_val.extend(val_sentences_by_lang[lang])
-        all_test.extend(test_sentences_by_lang[lang])
 
-    train_loader, val_loader, _ = make_dataloaders(
+    train_loader, val_loader = make_dataloaders(
         train_sentences=all_train,
         val_sentences=all_val,
-        test_sentences=all_test,
         tokenizer=tokenizer,
         label2id=label2id,
         data_config=data_cfg,
         train_batch_size=config.train.train_batch_size,
         val_batch_size=config.train.val_batch_size,
         language_sampling_temperature=config.train.language_sampling_temperature,
+        seed=config.train.seed,
     )
 
     # ------------------------------------------------------------------ #
@@ -221,6 +246,7 @@ def run_pipeline(config: Config) -> dict:
             batch_size=config.train.val_batch_size,
             max_length=data_cfg.max_length,
             lowercase=data_cfg.lowercase,
+            amp=config.train.fp16,
         )
         true_tags = [r[1] for r in results]
         pred_tags = [r[2] for r in results]

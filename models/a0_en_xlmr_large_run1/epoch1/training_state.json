@@ -1,0 +1,19 @@
+{
+  "epoch": 1,
+  "global_step": 1049,
+  "best_dev_f1": 0.5391304347826087,
+  "best_dev_step": 1049,
+  "best_dev_epoch": 1,
+  "history": [
+    {
+      "epoch": 0,
+      "train_loss": 13.57306032844449,
+      "dev_loss": 5.396113242421832,
+      "dev_overall_f1": 0.5391304347826087,
+      "dev_overall_precision": 0.5817694369973191,
+      "dev_overall_recall": 0.5023148148148148,
+      "global_step": 1049,
+      "elapsed_seconds": 322.47
+    }
+  ]
+}

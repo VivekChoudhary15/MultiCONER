@@ -46,8 +46,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Experiment name (used for runs/ and models/ subfolders).",
     )
     parser.add_argument(
-        "--use-crf", action="store_true",
-        help="Add a CRF layer (requires torchcrf).",
+        "--use-crf", action=argparse.BooleanOptionalAction, default=True,
+        help="Linear-chain CRF head (A0 default: on). Use --no-use-crf to disable.",
+    )
+    parser.add_argument(
+        "--amp", action="store_true",
+        help="bf16 mixed precision on GPU (faster, less memory; good for *-large models).",
+    )
+    parser.add_argument("--seed", type=int, default=42, help="Random seed.")
+    parser.add_argument(
+        "--resume-from", default=None,
+        help="Checkpoint dir to resume from, e.g. models/<exp>/epoch3. "
+             "--epochs is the TOTAL number of epochs (not extra epochs).",
+    )
+    parser.add_argument(
+        "--save-optimizer-state", action=argparse.BooleanOptionalAction, default=True,
+        help="Save optimizer/scheduler/RNG state in epoch checkpoints (for exact resume).",
+    )
+    parser.add_argument(
+        "--eval-batch-size", type=int, default=32, help="Dev/test batch size.",
+    )
+    parser.add_argument(
+        "--eval-every", type=int, default=500,
+        help="Evaluate on dev every N steps (0 = only at end of each epoch).",
+    )
+    parser.add_argument(
+        "--patience", type=int, default=3,
+        help="Early-stopping patience (number of dev evals without F1 improvement).",
     )
     parser.add_argument(
         "--freeze-backbone", action="store_true",
@@ -73,6 +98,13 @@ def main() -> None:
     config.log.experiment_name = args.experiment_name
     config.model.use_crf = args.use_crf
     config.model.freeze_backbone = args.freeze_backbone
+    config.train.fp16 = args.amp
+    config.train.seed = args.seed
+    config.train.resume_from = args.resume_from
+    config.log.save_optimizer_state = args.save_optimizer_state
+    config.train.val_batch_size = args.eval_batch_size
+    config.train.eval_every = args.eval_every
+    config.train.early_stopping_patience = args.patience
 
     run_pipeline(config)
 

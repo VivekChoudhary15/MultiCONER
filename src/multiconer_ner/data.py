@@ -138,7 +138,7 @@ def stream_conll(
             if not line:
                 flush()
                 continue
-            if line.startswith("#"):
+            if line.startswith("# id ") or line.startswith("# id\t"):
                 # A metadata header ends the current sentence if one is open.
                 if tokens:
                     flush()
@@ -234,7 +234,7 @@ class NERDataset(Dataset):
                 is_split_into_words=True,
                 truncation=True,
                 max_length=self.max_length,
-                padding="max_length",
+                padding=False,  # dynamic padding happens in collate_batch
                 return_tensors=None,
             )
 
@@ -270,10 +270,30 @@ class NERDataset(Dataset):
     def __getitem__(self, idx: int) -> dict:
         ex = self.examples[idx]
         return {
-            "input_ids": torch.tensor(ex["input_ids"], dtype=torch.long),
-            "attention_mask": torch.tensor(ex["attention_mask"], dtype=torch.long),
-            "labels": torch.tensor(ex["labels"], dtype=torch.long),
+            "input_ids": ex["input_ids"],
+            "attention_mask": ex["attention_mask"],
+            "labels": ex["labels"],
         }
+
+
+def make_collate_fn(pad_token_id: int):
+    """Pad a batch to its own longest sequence (much faster than padding
+    every sentence to max_length)."""
+
+    def collate_batch(batch: Sequence[dict]) -> dict:
+        max_len = max(len(ex["input_ids"]) for ex in batch)
+        n = len(batch)
+        input_ids = torch.full((n, max_len), pad_token_id, dtype=torch.long)
+        attention_mask = torch.zeros((n, max_len), dtype=torch.long)
+        labels = torch.full((n, max_len), -100, dtype=torch.long)
+        for i, ex in enumerate(batch):
+            L = len(ex["input_ids"])
+            input_ids[i, :L] = torch.tensor(ex["input_ids"], dtype=torch.long)
+            attention_mask[i, :L] = torch.tensor(ex["attention_mask"], dtype=torch.long)
+            labels[i, :L] = torch.tensor(ex["labels"], dtype=torch.long)
+        return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
+
+    return collate_batch
 
 
 class LanguageBalancedSampler(Sampler[int]):
@@ -312,11 +332,9 @@ class LanguageBalancedSampler(Sampler[int]):
         self.lang_weights = [w / total for w in lang_weights]
 
     def __iter__(self) -> Iterator[int]:
-        import random
-
         for _ in range(self.num_samples):
-            # Pick a language according to lang_weights.
-            r = random.random()
+            # Pick a language according to lang_weights (seeded generator).
+            r = float(torch.rand(1, generator=self.generator).item())
             cumulative = 0.0
             lang_idx = self.num_languages - 1
             for i, w in enumerate(self.lang_weights):
@@ -339,21 +357,22 @@ def make_dataloaders(
     *,
     train_sentences: Sequence[Sentence],
     val_sentences: Sequence[Sentence],
-    test_sentences: Sequence[Sentence],
     tokenizer: PreTrainedTokenizerBase,
     label2id: Dict[str, int],
-    data_config: DataConfig,
+    data_config: "DataConfig",
     train_batch_size: int,
     val_batch_size: int,
     language_sampling_temperature: float = 1.0,
-) -> Tuple[DataLoader, DataLoader, DataLoader]:
+    seed: int = 42,
+) -> Tuple[DataLoader, DataLoader]:
     """Build train / val / test DataLoaders sharing one label space.
 
     If ``data_config.multilingual`` is True, the train loader uses a
     language-balanced sampler so each language contributes equally to each
-    epoch. Val and test loaders are pooled (simple ConcatDataset).
+    epoch. The val loader is pooled. Test data is NOT tokenized here; it is
+    encoded per language at prediction time (the test splits are huge).
     """
-    from torch.utils.data import ConcatDataset
+    collate = make_collate_fn(tokenizer.pad_token_id)
 
     train_ds = NERDataset(
         train_sentences,
@@ -369,46 +388,44 @@ def make_dataloaders(
         max_length=data_config.max_length,
         lowercase=data_config.lowercase,
     )
-    test_ds = NERDataset(
-        test_sentences,
-        tokenizer,
-        label2id,
-        max_length=data_config.max_length,
-        lowercase=data_config.lowercase,
-    )
 
     # Train loader.
     if data_config.multilingual:
-        # Compute per-language sizes in the concatenated train dataset.
-        # NERDataset does not store language per example in a directly
-        # accessible way, so we reconstruct sizes from the input sentences.
+        # Per-language sizes, in the SAME order the sentences appear in
+        # train_sentences (sentences are concatenated language by language).
+        lang_order: List[str] = []
         lang_to_count: Dict[str, int] = {}
         for s in train_sentences:
-            lang_to_count[s.language] = lang_to_count.get(s.language, 0) + 1
-        sizes = [lang_to_count[lang] for lang in sorted(lang_to_count)]
+            if s.language not in lang_to_count:
+                lang_order.append(s.language)
+                lang_to_count[s.language] = 0
+            lang_to_count[s.language] += 1
+        sizes = [lang_to_count[lang] for lang in lang_order]
 
         sampler = LanguageBalancedSampler(
             sizes,
             temperature=language_sampling_temperature,
+            generator=torch.Generator().manual_seed(seed),
         )
         train_loader = DataLoader(
             train_ds,
             batch_size=train_batch_size,
             sampler=sampler,
             shuffle=False,  # sampler handles ordering
+            collate_fn=collate,
         )
     else:
         train_loader = DataLoader(
-            train_ds, batch_size=train_batch_size, shuffle=True, drop_last=False
+            train_ds, batch_size=train_batch_size, shuffle=True, drop_last=False,
+            collate_fn=collate,
+            generator=torch.Generator().manual_seed(seed),
         )
 
     val_loader = DataLoader(
-        val_ds, batch_size=val_batch_size, shuffle=False, drop_last=False
+        val_ds, batch_size=val_batch_size, shuffle=False, drop_last=False,
+        collate_fn=collate,
     )
-    test_loader = DataLoader(
-        test_ds, batch_size=val_batch_size, shuffle=False, drop_last=False
-    )
-    return train_loader, val_loader, test_loader
+    return train_loader, val_loader
 
 
 def make_language_balanced_loader(
@@ -427,4 +444,6 @@ def make_language_balanced_loader(
     concat = ConcatDataset(list(datasets))
     sizes = [len(d) for d in datasets]
     sampler = LanguageBalancedSampler(sizes, temperature=temperature)
-    return DataLoader(concat, batch_size=batch_size, sampler=sampler, shuffle=False)
+    pad_id = datasets[0].tokenizer.pad_token_id  # type: ignore[attr-defined]
+    return DataLoader(concat, batch_size=batch_size, sampler=sampler, shuffle=False,
+                      collate_fn=make_collate_fn(pad_id))

@@ -1,0 +1,5 @@
+{
+  "model_name": "xlm-roberta-base",
+  "num_labels": 67,
+  "use_crf": true
+}

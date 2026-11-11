@@ -1,0 +1,29 @@
+{
+  "epoch": 2,
+  "global_step": 21354,
+  "best_dev_f1": 0.6765193903144897,
+  "best_dev_step": 21354,
+  "best_dev_epoch": 2,
+  "history": [
+    {
+      "epoch": 0,
+      "train_loss": 8.0643072127626,
+      "dev_loss": 4.318886706726157,
+      "dev_overall_f1": 0.6292310702406574,
+      "dev_overall_precision": 0.6563265306122449,
+      "dev_overall_recall": 0.6042841037204059,
+      "global_step": 10677,
+      "elapsed_seconds": 1376.75
+    },
+    {
+      "epoch": 1,
+      "train_loss": 3.5712913120352305,
+      "dev_loss": 3.7325284686877573,
+      "dev_overall_f1": 0.6765193903144897,
+      "dev_overall_precision": 0.6951625693893735,
+      "dev_overall_recall": 0.6588500563697858,
+      "global_step": 21354,
+      "elapsed_seconds": 4811.89
+    }
+  ]
+}
