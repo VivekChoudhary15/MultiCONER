@@ -39,6 +39,14 @@ class DataConfig:
     # If True, train on every language folder found under data_root (multilingual track).
     multilingual: bool = False
 
+    # --- Stage A1: Retrieval configuration ---
+    use_retrieval: bool = False
+    kb_index_dir: str = "./kb_index"
+    rebuild_kb: bool = False
+    retrieval_top_k: int = 5
+    retrieval_threshold: float = 0.0
+    context_max_tokens: int = 64
+
 
 @dataclass
 class ModelConfig:

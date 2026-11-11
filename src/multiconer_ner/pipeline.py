@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+from dataclasses import replace
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -29,7 +30,9 @@ from .data import (
 )
 from .evaluate import evaluate_predictions, print_report, save_metrics
 from .inference import predict_split, save_conll_predictions, save_predictions_json
+from .kb import KBIndex
 from .model import MultilingualNER
+from .retriever import Retriever
 from .trainer import Trainer
 
 logger = logging.getLogger("multiconer_ner")
@@ -141,6 +144,51 @@ def run_pipeline(config: Config) -> dict:
     tokenizer = AutoTokenizer.from_pretrained(config.model.model_name)
 
     # ------------------------------------------------------------------ #
+    # 3b. Stage A1: Retrieval -- build/load KB index and attach context.
+    # ------------------------------------------------------------------ #
+    retriever: Optional[Retriever] = None
+    if data_cfg.use_retrieval:
+        kb_dir = Path(data_cfg.kb_index_dir)
+        if data_cfg.rebuild_kb or not (kb_dir / "entries.json").exists():
+            logger.info(
+                f"[A1] Building KB index at {kb_dir} (languages: {languages})"
+            )
+            kb = KBIndex()
+            # Build from training entity mentions via Wikipedia API.
+            from multiconer_ner.scripts.build_kb import build_kb_index
+
+            kb = build_kb_index(
+                languages=languages,
+                data_root=str(data_cfg.data_root),
+                output_dir=kb_dir,
+                train_splits=data_cfg.train_splits,
+                rebuild=True,
+            )
+        else:
+            logger.info(f"[A1] Loading KB index from {kb_dir}")
+            kb = KBIndex.load(kb_dir)
+        retriever = Retriever(kb)
+
+        # Attach retrieved context to every sentence (train/val/test).
+        for lang in languages:
+            for split_dict in (
+                train_sentences_by_lang,
+                val_sentences_by_lang,
+                test_sentences_by_lang,
+            ):
+                for i, sent in enumerate(split_dict[lang]):
+                    query = " ".join(sent.tokens)
+                    entries = retriever.retrieve(
+                        query,
+                        language=lang,
+                        top_k=data_cfg.retrieval_top_k,
+                        threshold=data_cfg.retrieval_threshold,
+                    )
+                    ctx = Retriever.context_string(entries)
+                    if ctx:
+                        split_dict[lang][i] = replace(sent, context=ctx)
+
+    # ------------------------------------------------------------------ #
     # 4. Combine sentences across languages and build DataLoaders.
     #    If multilingual, the train loader uses LanguageBalancedSampler
     #    (equal probability per language) so high-resource languages do not
@@ -160,6 +208,7 @@ def run_pipeline(config: Config) -> dict:
         data_config=data_cfg,
         train_batch_size=config.train.train_batch_size,
         val_batch_size=config.train.val_batch_size,
+        context_max_tokens=data_cfg.context_max_tokens,
         language_sampling_temperature=config.train.language_sampling_temperature,
         seed=config.train.seed,
     )
@@ -247,6 +296,9 @@ def run_pipeline(config: Config) -> dict:
             max_length=data_cfg.max_length,
             lowercase=data_cfg.lowercase,
             amp=config.train.fp16,
+            retriever=retriever,
+            language=lang,
+            context_max_tokens=data_cfg.context_max_tokens,
         )
         true_tags = [r[1] for r in results]
         pred_tags = [r[2] for r in results]

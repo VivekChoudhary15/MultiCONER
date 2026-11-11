@@ -5,14 +5,16 @@ format (token + predicted tag per line, blank line between sentences).
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 from torch.utils.data import DataLoader
 
 from .data import NERDataset, Sentence, load_split_sentences, make_collate_fn
 from .model import MultilingualNER
+from .retriever import Retriever
 
 
 def predict_split(
@@ -25,19 +27,45 @@ def predict_split(
     max_length: int = 256,
     lowercase: bool = False,
     amp: bool = False,
+    retriever: Optional[Retriever] = None,
+    language: Optional[str] = None,
+    context_max_tokens: int = 64,
 ) -> List[Tuple[List[str], List[str], List[str]]]:
     """Predict tags for a list of Sentence objects.
 
     Returns a list of (tokens, true_tags, pred_tags) per sentence.
+
+    If ``retriever`` is provided, retrieved KB context is attached to each
+    sentence (Stage A1) before encoding.
     """
     model.eval()
     use_amp = amp and str(device).startswith("cuda")
+
+    # Attach retrieved context to sentences (Stage A1).
+    if retriever is not None:
+        ctx_sentences: List[Sentence] = []
+        for sent in sentences:
+            query = " ".join(sent.tokens)
+            entries = retriever.retrieve(
+                query,
+                language=language,
+                top_k=5,
+                threshold=0.0,
+            )
+            ctx = Retriever.context_string(entries)
+            if ctx:
+                ctx_sentences.append(replace(sent, context=ctx))
+            else:
+                ctx_sentences.append(sent)
+        sentences = ctx_sentences
+
     dataset = NERDataset(
         sentences,
         tokenizer,
         label2id,
         max_length=max_length,
         lowercase=lowercase,
+        context_max_tokens=context_max_tokens,
     )
     loader = DataLoader(
         dataset, batch_size=batch_size, shuffle=False,

@@ -6,3 +6,5 @@ tqdm>=4.60.0
 pyyaml>=6.0
 sentencepiece>=0.2.0
 pytorch-crf>=0.7.2  # provides the `torchcrf` module
+rank_bm25>=0.2.2     # BM25 retrieval for Stage A1
+requests>=2.28.0     # Wikipedia API calls for KB building
