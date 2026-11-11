@@ -39,6 +39,7 @@ class Sentence:
     split: str
     doc_id: Optional[str] = None
     domain: Optional[str] = None
+    context: Optional[str] = None  # Retrieved KB context (Stage A1)
 
 
 def repair_bio_tags(tags: Sequence[str]) -> List[str]:
@@ -216,21 +217,39 @@ class NERDataset(Dataset):
         label2id: Dict[str, int],
         max_length: int = 256,
         lowercase: bool = False,
+        context_max_tokens: int = 64,
     ):
         self.tokenizer = tokenizer
         self.label2id = label2id
         self.max_length = max_length
         self.lowercase = lowercase
+        self.context_max_tokens = context_max_tokens
         self.examples = self._encode(sentences)
 
     def _encode(self, sentences: Sequence[Sentence]) -> List[dict]:
         examples: List[dict] = []
         for sent in sentences:
-            tokens = [t.lower() if self.lowercase else t for t in sent.tokens]
-            tags = sent.tags
+            # Build combined token list: [context tokens..., sentence tokens...]
+            sentence_tokens = [
+                t.lower() if self.lowercase else t for t in sent.tokens
+            ]
+            all_tokens: List[str] = list(sentence_tokens)
+            all_labels: List[int] = [
+                self.label2id[t] for t in sent.tags
+            ]
+
+            # Prepend retrieved context (Stage A1). Context tokens get -100
+            # so they are ignored by the loss; only sentence words are scored.
+            if sent.context:
+                context_tokens = sent.context.split()
+                # Truncate context to the budget so the sentence is preserved.
+                if len(context_tokens) > self.context_max_tokens:
+                    context_tokens = context_tokens[: self.context_max_tokens]
+                all_tokens = context_tokens + all_tokens
+                all_labels = [-100] * len(context_tokens) + all_labels
 
             encoding = self.tokenizer(
-                tokens,
+                all_tokens,
                 is_split_into_words=True,
                 truncation=True,
                 max_length=self.max_length,
@@ -247,7 +266,7 @@ class NERDataset(Dataset):
                     labels.append(-100)
                 elif word_idx != previous_word_idx:
                     # First subword of a word -> keep the word's label.
-                    labels.append(self.label2id[tags[word_idx]])
+                    labels.append(all_labels[word_idx])
                 else:
                     # Continuation subword -> ignore in loss (-100).
                     labels.append(-100)
@@ -364,6 +383,7 @@ def make_dataloaders(
     val_batch_size: int,
     language_sampling_temperature: float = 1.0,
     seed: int = 42,
+    context_max_tokens: int = 64,
 ) -> Tuple[DataLoader, DataLoader]:
     """Build train / val / test DataLoaders sharing one label space.
 
@@ -380,6 +400,7 @@ def make_dataloaders(
         label2id,
         max_length=data_config.max_length,
         lowercase=data_config.lowercase,
+        context_max_tokens=context_max_tokens,
     )
     val_ds = NERDataset(
         val_sentences,
@@ -387,6 +408,7 @@ def make_dataloaders(
         label2id,
         max_length=data_config.max_length,
         lowercase=data_config.lowercase,
+        context_max_tokens=context_max_tokens,
     )
 
     # Train loader.

@@ -78,6 +78,32 @@ def build_parser() -> argparse.ArgumentParser:
         "--freeze-backbone", action="store_true",
         help="Freeze the transformer backbone (feature extraction).",
     )
+    # --- Stage A1: Retrieval flags ---
+    parser.add_argument(
+        "--use-retrieval", action=argparse.BooleanOptionalAction, default=False,
+        help="Enable Wikipedia/Wikidata retrieval (Stage A1). "
+             "Retrains model with retrieved context injected into input.",
+    )
+    parser.add_argument(
+        "--kb-index-dir", default="./kb_index",
+        help="Directory to read/write the offline KB index (Stage A1).",
+    )
+    parser.add_argument(
+        "--rebuild-kb", action="store_true",
+        help="Force rebuild the KB index even if it exists (Stage A1).",
+    )
+    parser.add_argument(
+        "--retrieval-top-k", type=int, default=5,
+        help="Number of KB entries to retrieve per sentence (Stage A1).",
+    )
+    parser.add_argument(
+        "--retrieval-threshold", type=float, default=0.0,
+        help="Minimum BM25 score to keep a retrieved entry (Stage A1).",
+    )
+    parser.add_argument(
+        "--context-max-tokens", type=int, default=64,
+        help="Max tokens reserved for retrieved context (Stage A1).",
+    )
     return parser
 
 
@@ -105,6 +131,14 @@ def main() -> None:
     config.train.val_batch_size = args.eval_batch_size
     config.train.eval_every = args.eval_every
     config.train.early_stopping_patience = args.patience
+
+    # --- Stage A1: Retrieval config ---
+    config.data.use_retrieval = args.use_retrieval
+    config.data.kb_index_dir = args.kb_index_dir
+    config.data.rebuild_kb = args.rebuild_kb
+    config.data.retrieval_top_k = args.retrieval_top_k
+    config.data.retrieval_threshold = args.retrieval_threshold
+    config.data.context_max_tokens = args.context_max_tokens
 
     run_pipeline(config)
 
