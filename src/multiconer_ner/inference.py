@@ -11,7 +11,7 @@ from typing import List, Tuple
 import torch
 from torch.utils.data import DataLoader
 
-from .data import NERDataset, Sentence, load_split_sentences
+from .data import NERDataset, Sentence, load_split_sentences, make_collate_fn
 from .model import MultilingualNER
 
 
@@ -24,12 +24,14 @@ def predict_split(
     batch_size: int = 32,
     max_length: int = 256,
     lowercase: bool = False,
+    amp: bool = False,
 ) -> List[Tuple[List[str], List[str], List[str]]]:
     """Predict tags for a list of Sentence objects.
 
     Returns a list of (tokens, true_tags, pred_tags) per sentence.
     """
     model.eval()
+    use_amp = amp and str(device).startswith("cuda")
     dataset = NERDataset(
         sentences,
         tokenizer,
@@ -37,7 +39,10 @@ def predict_split(
         max_length=max_length,
         lowercase=lowercase,
     )
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    loader = DataLoader(
+        dataset, batch_size=batch_size, shuffle=False,
+        collate_fn=make_collate_fn(tokenizer.pad_token_id),
+    )
     id2label = model.id2label
 
     results: List[Tuple[List[str], List[str], List[str]]] = []
@@ -47,18 +52,21 @@ def predict_split(
             attention_mask = batch["attention_mask"].to(device)
             labels = batch["labels"]
 
-            preds = model.predict_tags(input_ids, attention_mask)
+            with torch.autocast("cuda", dtype=torch.bfloat16, enabled=use_amp):
+                logits = model(input_ids=input_ids, attention_mask=attention_mask)["logits"]
+            preds = model.decode(logits, (labels != -100).to(device))
 
             for i in range(labels.shape[0]):
                 lab = labels[i].tolist()
                 true_seq = [id2label[l] for l in lab if l != -100]
                 results.append((None, true_seq, preds[i]))
 
-    # Attach raw tokens (dataset.examples order matches sentences order).
+    # Attach raw tokens (dataset order matches sentences order). Sentences
+    # longer than max_length were truncated, so trim tokens to match.
+    assert len(results) == len(sentences)
     for idx, sentence in enumerate(sentences):
-        if idx < len(results):
-            _, true_seq, pred_seq = results[idx]
-            results[idx] = (sentence.tokens, true_seq, pred_seq)
+        _, true_seq, pred_seq = results[idx]
+        results[idx] = (sentence.tokens[: len(pred_seq)], true_seq, pred_seq)
 
     return results
 

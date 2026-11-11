@@ -1,0 +1,600 @@
+{
+  "best_dev_f1": 0.6881553398058253,
+  "best_dev_epoch": 5,
+  "best_dev_step": 5000,
+  "label_list": [
+    "O",
+    "B-AerospaceManufacturer",
+    "I-AerospaceManufacturer",
+    "B-AnatomicalStructure",
+    "I-AnatomicalStructure",
+    "B-ArtWork",
+    "I-ArtWork",
+    "B-Artist",
+    "I-Artist",
+    "B-Athlete",
+    "I-Athlete",
+    "B-CarManufacturer",
+    "I-CarManufacturer",
+    "B-Cleric",
+    "I-Cleric",
+    "B-Clothing",
+    "I-Clothing",
+    "B-Disease",
+    "I-Disease",
+    "B-Drink",
+    "I-Drink",
+    "B-Facility",
+    "I-Facility",
+    "B-Food",
+    "I-Food",
+    "B-HumanSettlement",
+    "I-HumanSettlement",
+    "B-MedicalProcedure",
+    "I-MedicalProcedure",
+    "B-Medication/Vaccine",
+    "I-Medication/Vaccine",
+    "B-MusicalGRP",
+    "I-MusicalGRP",
+    "B-MusicalWork",
+    "I-MusicalWork",
+    "B-ORG",
+    "I-ORG",
+    "B-OtherLOC",
+    "I-OtherLOC",
+    "B-OtherPER",
+    "I-OtherPER",
+    "B-OtherPROD",
+    "I-OtherPROD",
+    "B-Politician",
+    "I-Politician",
+    "B-PrivateCorp",
+    "I-PrivateCorp",
+    "B-PublicCorp",
+    "I-PublicCorp",
+    "B-Scientist",
+    "I-Scientist",
+    "B-Software",
+    "I-Software",
+    "B-SportsGRP",
+    "I-SportsGRP",
+    "B-SportsManager",
+    "I-SportsManager",
+    "B-Station",
+    "I-Station",
+    "B-Symptom",
+    "I-Symptom",
+    "B-Vehicle",
+    "I-Vehicle",
+    "B-VisualWork",
+    "I-VisualWork",
+    "B-WrittenWork",
+    "I-WrittenWork"
+  ],
+  "label2id": {
+    "O": 0,
+    "B-AerospaceManufacturer": 1,
+    "I-AerospaceManufacturer": 2,
+    "B-AnatomicalStructure": 3,
+    "I-AnatomicalStructure": 4,
+    "B-ArtWork": 5,
+    "I-ArtWork": 6,
+    "B-Artist": 7,
+    "I-Artist": 8,
+    "B-Athlete": 9,
+    "I-Athlete": 10,
+    "B-CarManufacturer": 11,
+    "I-CarManufacturer": 12,
+    "B-Cleric": 13,
+    "I-Cleric": 14,
+    "B-Clothing": 15,
+    "I-Clothing": 16,
+    "B-Disease": 17,
+    "I-Disease": 18,
+    "B-Drink": 19,
+    "I-Drink": 20,
+    "B-Facility": 21,
+    "I-Facility": 22,
+    "B-Food": 23,
+    "I-Food": 24,
+    "B-HumanSettlement": 25,
+    "I-HumanSettlement": 26,
+    "B-MedicalProcedure": 27,
+    "I-MedicalProcedure": 28,
+    "B-Medication/Vaccine": 29,
+    "I-Medication/Vaccine": 30,
+    "B-MusicalGRP": 31,
+    "I-MusicalGRP": 32,
+    "B-MusicalWork": 33,
+    "I-MusicalWork": 34,
+    "B-ORG": 35,
+    "I-ORG": 36,
+    "B-OtherLOC": 37,
+    "I-OtherLOC": 38,
+    "B-OtherPER": 39,
+    "I-OtherPER": 40,
+    "B-OtherPROD": 41,
+    "I-OtherPROD": 42,
+    "B-Politician": 43,
+    "I-Politician": 44,
+    "B-PrivateCorp": 45,
+    "I-PrivateCorp": 46,
+    "B-PublicCorp": 47,
+    "I-PublicCorp": 48,
+    "B-Scientist": 49,
+    "I-Scientist": 50,
+    "B-Software": 51,
+    "I-Software": 52,
+    "B-SportsGRP": 53,
+    "I-SportsGRP": 54,
+    "B-SportsManager": 55,
+    "I-SportsManager": 56,
+    "B-Station": 57,
+    "I-Station": 58,
+    "B-Symptom": 59,
+    "I-Symptom": 60,
+    "B-Vehicle": 61,
+    "I-Vehicle": 62,
+    "B-VisualWork": 63,
+    "I-VisualWork": 64,
+    "B-WrittenWork": 65,
+    "I-WrittenWork": 66
+  },
+  "num_labels": 67,
+  "languages": [
+    "EN-English"
+  ],
+  "model_name": "xlm-roberta-large",
+  "output_dir": "/DATA/MultiCONER/models/multiconer_ner/best_model",
+  "pooled_test_metrics": {
+    "overall_precision": 0.6798619344979316,
+    "overall_recall": 0.682966080385384,
+    "overall_f1": 0.6814104722480804,
+    "by_type": {
+      "AerospaceManufacturer": {
+        "precision": 0.31941544885177453,
+        "recall": 0.6029556650246305,
+        "f1": 0.41760491299897645,
+        "support": 1015
+      },
+      "AnatomicalStructure": {
+        "precision": 0.6386675167357347,
+        "recall": 0.6863651935594381,
+        "f1": 0.66165785997358,
+        "support": 5838
+      },
+      "ArtWork": {
+        "precision": 0.4528301886792453,
+        "recall": 0.5291338582677165,
+        "f1": 0.4880174291938998,
+        "support": 1270
+      },
+      "Artist": {
+        "precision": 0.7418054640695085,
+        "recall": 0.8293123400077147,
+        "f1": 0.783121957680718,
+        "support": 57034
+      },
+      "Athlete": {
+        "precision": 0.7580192873264483,
+        "recall": 0.8020697640758431,
+        "f1": 0.7794226238615986,
+        "support": 27636
+      },
+      "CarManufacturer": {
+        "precision": 0.6055245189323402,
+        "recall": 0.6538203753351206,
+        "f1": 0.6287463744763132,
+        "support": 2984
+      },
+      "Cleric": {
+        "precision": 0.5931603773584906,
+        "recall": 0.4251901944209637,
+        "f1": 0.49532250123092075,
+        "support": 4732
+      },
+      "Clothing": {
+        "precision": 0.552308343922067,
+        "recall": 0.5811051693404634,
+        "f1": 0.5663409337676439,
+        "support": 2244
+      },
+      "Disease": {
+        "precision": 0.6150313791519976,
+        "recall": 0.7145651787302152,
+        "f1": 0.6610727212898979,
+        "support": 5623
+      },
+      "Drink": {
+        "precision": 0.5737033666969973,
+        "recall": 0.5614425645592164,
+        "f1": 0.5675067506750676,
+        "support": 2246
+      },
+      "Facility": {
+        "precision": 0.6334262168731843,
+        "recall": 0.6601173926475131,
+        "f1": 0.6464964298680865,
+        "support": 16185
+      },
+      "Food": {
+        "precision": 0.5440717628705148,
+        "recall": 0.5247319917246568,
+        "f1": 0.534226902824318,
+        "support": 5317
+      },
+      "HumanSettlement": {
+        "precision": 0.8689617408280361,
+        "recall": 0.8879887112862808,
+        "f1": 0.8783721993598537,
+        "support": 41103
+      },
+      "MedicalProcedure": {
+        "precision": 0.6574074074074074,
+        "recall": 0.6085714285714285,
+        "f1": 0.6320474777448072,
+        "support": 3850
+      },
+      "Medication/Vaccine": {
+        "precision": 0.7276925919083688,
+        "recall": 0.7266187050359713,
+        "f1": 0.7271552519844934,
+        "support": 5421
+      },
+      "MusicalGRP": {
+        "precision": 0.7033210332103321,
+        "recall": 0.6613462873004857,
+        "f1": 0.6816881258941345,
+        "support": 12969
+      },
+      "MusicalWork": {
+        "precision": 0.7478638096490074,
+        "recall": 0.7434657605854679,
+        "f1": 0.7456583000196606,
+        "support": 15304
+      },
+      "ORG": {
+        "precision": 0.5981861023429511,
+        "recall": 0.6002944588203801,
+        "f1": 0.5992384260805664,
+        "support": 22414
+      },
+      "OtherLOC": {
+        "precision": 0.5816112608565439,
+        "recall": 0.41898597626752965,
+        "f1": 0.4870830198143968,
+        "support": 4635
+      },
+      "OtherPER": {
+        "precision": 0.4340548340548341,
+        "recall": 0.4779371708734338,
+        "f1": 0.4549402588423395,
+        "support": 22028
+      },
+      "OtherPROD": {
+        "precision": 0.4993680116674769,
+        "recall": 0.43385707045108973,
+        "f1": 0.4643131582515934,
+        "support": 11838
+      },
+      "Politician": {
+        "precision": 0.6238575111319428,
+        "recall": 0.499437148217636,
+        "f1": 0.5547566948004585,
+        "support": 15990
+      },
+      "PrivateCorp": {
+        "precision": 0.2864583333333333,
+        "recall": 0.13580246913580246,
+        "f1": 0.1842546063651591,
+        "support": 810
+      },
+      "PublicCorp": {
+        "precision": 0.520490010208546,
+        "recall": 0.5229304029304029,
+        "f1": 0.5217073527262096,
+        "support": 6825
+      },
+      "Scientist": {
+        "precision": 0.4887788778877888,
+        "recall": 0.3005275974025974,
+        "f1": 0.37220407137471717,
+        "support": 4928
+      },
+      "Software": {
+        "precision": 0.6815994867956805,
+        "recall": 0.711336755188574,
+        "f1": 0.696150696150696,
+        "support": 8962
+      },
+      "SportsGRP": {
+        "precision": 0.7887585387585387,
+        "recall": 0.8165885156430164,
+        "f1": 0.8024322997318427,
+        "support": 13009
+      },
+      "SportsManager": {
+        "precision": 0.6441342150379623,
+        "recall": 0.49315582223888993,
+        "f1": 0.5586236193712829,
+        "support": 5333
+      },
+      "Station": {
+        "precision": 0.7740003522987493,
+        "recall": 0.7350284376045501,
+        "f1": 0.7540111540111539,
+        "support": 5978
+      },
+      "Symptom": {
+        "precision": 0.3559718969555035,
+        "recall": 0.08641273450824331,
+        "f1": 0.13906678865507777,
+        "support": 1759
+      },
+      "Vehicle": {
+        "precision": 0.478502080443828,
+        "recall": 0.523167649536647,
+        "f1": 0.4998390212491951,
+        "support": 5935
+      },
+      "VisualWork": {
+        "precision": 0.7001349392773252,
+        "recall": 0.7119117796524037,
+        "f1": 0.7059742484944693,
+        "support": 19678
+      },
+      "WrittenWork": {
+        "precision": 0.697002276751834,
+        "recall": 0.6516674550614948,
+        "f1": 0.6735729128468403,
+        "support": 16912
+      },
+      "micro avg": {
+        "precision": 0.6798619344979316,
+        "recall": 0.682966080385384,
+        "f1": 0.6814104722480804,
+        "support": 377805
+      },
+      "macro avg": {
+        "precision": 0.6026096721901302,
+        "recall": 0.5853891522426005,
+        "f1": 0.5867462752003021,
+        "support": 377805
+      },
+      "weighted avg": {
+        "precision": 0.6765299786544269,
+        "recall": 0.682966080385384,
+        "f1": 0.6773601034110334,
+        "support": 377805
+      }
+    }
+  },
+  "per_language_test": [
+    {
+      "language": "EN-English",
+      "metrics": {
+        "overall_precision": 0.6798619344979316,
+        "overall_recall": 0.682966080385384,
+        "overall_f1": 0.6814104722480804,
+        "by_type": {
+          "AerospaceManufacturer": {
+            "precision": 0.31941544885177453,
+            "recall": 0.6029556650246305,
+            "f1": 0.41760491299897645,
+            "support": 1015
+          },
+          "AnatomicalStructure": {
+            "precision": 0.6386675167357347,
+            "recall": 0.6863651935594381,
+            "f1": 0.66165785997358,
+            "support": 5838
+          },
+          "ArtWork": {
+            "precision": 0.4528301886792453,
+            "recall": 0.5291338582677165,
+            "f1": 0.4880174291938998,
+            "support": 1270
+          },
+          "Artist": {
+            "precision": 0.7418054640695085,
+            "recall": 0.8293123400077147,
+            "f1": 0.783121957680718,
+            "support": 57034
+          },
+          "Athlete": {
+            "precision": 0.7580192873264483,
+            "recall": 0.8020697640758431,
+            "f1": 0.7794226238615986,
+            "support": 27636
+          },
+          "CarManufacturer": {
+            "precision": 0.6055245189323402,
+            "recall": 0.6538203753351206,
+            "f1": 0.6287463744763132,
+            "support": 2984
+          },
+          "Cleric": {
+            "precision": 0.5931603773584906,
+            "recall": 0.4251901944209637,
+            "f1": 0.49532250123092075,
+            "support": 4732
+          },
+          "Clothing": {
+            "precision": 0.552308343922067,
+            "recall": 0.5811051693404634,
+            "f1": 0.5663409337676439,
+            "support": 2244
+          },
+          "Disease": {
+            "precision": 0.6150313791519976,
+            "recall": 0.7145651787302152,
+            "f1": 0.6610727212898979,
+            "support": 5623
+          },
+          "Drink": {
+            "precision": 0.5737033666969973,
+            "recall": 0.5614425645592164,
+            "f1": 0.5675067506750676,
+            "support": 2246
+          },
+          "Facility": {
+            "precision": 0.6334262168731843,
+            "recall": 0.6601173926475131,
+            "f1": 0.6464964298680865,
+            "support": 16185
+          },
+          "Food": {
+            "precision": 0.5440717628705148,
+            "recall": 0.5247319917246568,
+            "f1": 0.534226902824318,
+            "support": 5317
+          },
+          "HumanSettlement": {
+            "precision": 0.8689617408280361,
+            "recall": 0.8879887112862808,
+            "f1": 0.8783721993598537,
+            "support": 41103
+          },
+          "MedicalProcedure": {
+            "precision": 0.6574074074074074,
+            "recall": 0.6085714285714285,
+            "f1": 0.6320474777448072,
+            "support": 3850
+          },
+          "Medication/Vaccine": {
+            "precision": 0.7276925919083688,
+            "recall": 0.7266187050359713,
+            "f1": 0.7271552519844934,
+            "support": 5421
+          },
+          "MusicalGRP": {
+            "precision": 0.7033210332103321,
+            "recall": 0.6613462873004857,
+            "f1": 0.6816881258941345,
+            "support": 12969
+          },
+          "MusicalWork": {
+            "precision": 0.7478638096490074,
+            "recall": 0.7434657605854679,
+            "f1": 0.7456583000196606,
+            "support": 15304
+          },
+          "ORG": {
+            "precision": 0.5981861023429511,
+            "recall": 0.6002944588203801,
+            "f1": 0.5992384260805664,
+            "support": 22414
+          },
+          "OtherLOC": {
+            "precision": 0.5816112608565439,
+            "recall": 0.41898597626752965,
+            "f1": 0.4870830198143968,
+            "support": 4635
+          },
+          "OtherPER": {
+            "precision": 0.4340548340548341,
+            "recall": 0.4779371708734338,
+            "f1": 0.4549402588423395,
+            "support": 22028
+          },
+          "OtherPROD": {
+            "precision": 0.4993680116674769,
+            "recall": 0.43385707045108973,
+            "f1": 0.4643131582515934,
+            "support": 11838
+          },
+          "Politician": {
+            "precision": 0.6238575111319428,
+            "recall": 0.499437148217636,
+            "f1": 0.5547566948004585,
+            "support": 15990
+          },
+          "PrivateCorp": {
+            "precision": 0.2864583333333333,
+            "recall": 0.13580246913580246,
+            "f1": 0.1842546063651591,
+            "support": 810
+          },
+          "PublicCorp": {
+            "precision": 0.520490010208546,
+            "recall": 0.5229304029304029,
+            "f1": 0.5217073527262096,
+            "support": 6825
+          },
+          "Scientist": {
+            "precision": 0.4887788778877888,
+            "recall": 0.3005275974025974,
+            "f1": 0.37220407137471717,
+            "support": 4928
+          },
+          "Software": {
+            "precision": 0.6815994867956805,
+            "recall": 0.711336755188574,
+            "f1": 0.696150696150696,
+            "support": 8962
+          },
+          "SportsGRP": {
+            "precision": 0.7887585387585387,
+            "recall": 0.8165885156430164,
+            "f1": 0.8024322997318427,
+            "support": 13009
+          },
+          "SportsManager": {
+            "precision": 0.6441342150379623,
+            "recall": 0.49315582223888993,
+            "f1": 0.5586236193712829,
+            "support": 5333
+          },
+          "Station": {
+            "precision": 0.7740003522987493,
+            "recall": 0.7350284376045501,
+            "f1": 0.7540111540111539,
+            "support": 5978
+          },
+          "Symptom": {
+            "precision": 0.3559718969555035,
+            "recall": 0.08641273450824331,
+            "f1": 0.13906678865507777,
+            "support": 1759
+          },
+          "Vehicle": {
+            "precision": 0.478502080443828,
+            "recall": 0.523167649536647,
+            "f1": 0.4998390212491951,
+            "support": 5935
+          },
+          "VisualWork": {
+            "precision": 0.7001349392773252,
+            "recall": 0.7119117796524037,
+            "f1": 0.7059742484944693,
+            "support": 19678
+          },
+          "WrittenWork": {
+            "precision": 0.697002276751834,
+            "recall": 0.6516674550614948,
+            "f1": 0.6735729128468403,
+            "support": 16912
+          },
+          "micro avg": {
+            "precision": 0.6798619344979316,
+            "recall": 0.682966080385384,
+            "f1": 0.6814104722480804,
+            "support": 377805
+          },
+          "macro avg": {
+            "precision": 0.6026096721901302,
+            "recall": 0.5853891522426005,
+            "f1": 0.5867462752003021,
+            "support": 377805
+          },
+          "weighted avg": {
+            "precision": 0.6765299786544269,
+            "recall": 0.682966080385384,
+            "f1": 0.6773601034110334,
+            "support": 377805
+          }
+        }
+      }
+    }
+  ]
+}

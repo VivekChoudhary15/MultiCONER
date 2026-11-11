@@ -14,7 +14,11 @@ Responsibilities:
 from __future__ import annotations
 
 import json
+import math
+import random
+import shutil
 import time
+import warnings
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -90,6 +94,14 @@ class Trainer:
         self.history: List[dict] = []
         self.start_time = time.time()
 
+        if self.train_cfg.resume_from:
+            self.resume(self.train_cfg.resume_from)
+
+    def _autocast(self):
+        """bf16 autocast on CUDA when --amp is set (no GradScaler needed)."""
+        enabled = bool(self.train_cfg.fp16) and str(self.device).startswith("cuda")
+        return torch.autocast("cuda", dtype=torch.bfloat16, enabled=enabled)
+
     def _move_batch(self, batch: dict) -> dict:
         return {
             k: v.to(self.device) if isinstance(v, torch.Tensor) else v
@@ -104,13 +116,14 @@ class Trainer:
         pbar = tqdm(self.train_loader, desc="train", leave=False)
         for batch in pbar:
             batch = self._move_batch(batch)
-            self.optimizer.zero_grad()
+            self.optimizer.zero_grad(set_to_none=True)
 
-            out = self.model(
-                input_ids=batch["input_ids"],
-                attention_mask=batch["attention_mask"],
-                labels=batch["labels"],
-            )
+            with self._autocast():
+                out = self.model(
+                    input_ids=batch["input_ids"],
+                    attention_mask=batch["attention_mask"],
+                    labels=batch["labels"],
+                )
             loss = out["loss"]
             if loss is None:
                 continue
@@ -159,17 +172,19 @@ class Trainer:
 
         for batch in tqdm(loader, desc="eval", leave=False):
             batch = self._move_batch(batch)
-            out = self.model(
-                input_ids=batch["input_ids"],
-                attention_mask=batch["attention_mask"],
-                labels=batch["labels"],
-            )
+            with self._autocast():
+                out = self.model(
+                    input_ids=batch["input_ids"],
+                    attention_mask=batch["attention_mask"],
+                    labels=batch["labels"],
+                )
             if out["loss"] is not None:
                 total_loss += out["loss"].item()
                 n_batches += 1
 
             labels = batch["labels"]
-            preds = self.model.predict_tags(batch["input_ids"], batch["attention_mask"])
+            # Reuse the logits from the forward pass (no second forward).
+            preds = self.model.decode(out["logits"], labels != -100)
 
             for i in range(labels.shape[0]):
                 lab = labels[i].tolist()
@@ -180,7 +195,7 @@ class Trainer:
         avg_loss = total_loss / max(n_batches, 1)
         metrics = evaluate_predictions(true_tags, pred_tags)
         metrics["loss"] = avg_loss
-        metrics["num_true_entities"] = sum(len(t) for t in true_tags)
+        metrics["num_true_tokens"] = sum(len(t) for t in true_tags)
         return metrics
 
     def _log_dev(self, metrics: dict, step: int) -> None:
@@ -214,9 +229,163 @@ class Trainer:
         else:
             self.patience_counter += 1
 
-    def _save_checkpoint(self, tag: str) -> None:
+    # ------------------------------------------------------------------ #
+    # Checkpointing / resume
+    # ------------------------------------------------------------------ #
+    def _loader_generators(self) -> List[torch.Generator]:
+        """torch.Generators that drive the train-loader shuffle/sampling order."""
+        gens: List[torch.Generator] = []
+        for g in (
+            getattr(self.train_loader, "generator", None),
+            getattr(getattr(self.train_loader, "sampler", None), "generator", None),
+        ):
+            if isinstance(g, torch.Generator) and all(g is not h for h in gens):
+                gens.append(g)
+        return gens
+
+    def _save_trainer_state(self, ckpt_dir: Path) -> None:
+        import numpy as np
+
+        state = {
+            "optimizer": self.optimizer.state_dict(),
+            "scheduler": self.scheduler.state_dict(),
+            "epoch": self.epoch,
+            "global_step": self.global_step,
+            "best_dev_f1": self.best_dev_f1,
+            "best_dev_step": self.best_dev_step,
+            "best_dev_epoch": self.best_dev_epoch,
+            "patience_counter": self.patience_counter,
+            "history": self.history,
+            "torch_rng": torch.get_rng_state(),
+            "cuda_rng": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+            "python_rng": random.getstate(),
+            "numpy_rng": np.random.get_state(),
+            "loader_generators": [g.get_state() for g in self._loader_generators()],
+        }
+        torch.save(state, ckpt_dir / "trainer_state.pt")
+
+    @staticmethod
+    def _best_f1_in(ckpt_dir: Path) -> Optional[float]:
+        try:
+            st = json.loads((ckpt_dir / "training_state.json").read_text(encoding="utf-8"))
+            return float(st["best_dev_f1"])
+        except Exception:
+            return None
+
+    def resume(self, ckpt_dir: str | Path) -> None:
+        """Restore weights (+ optimizer/scheduler/RNG if saved) from a checkpoint.
+
+        * epochN checkpoint with trainer_state.pt -> exact resume at epoch N+1.
+        * any other checkpoint (old epochN, best, best_model) -> weights-only:
+          fresh AdamW moments, LR schedule fast-forwarded, training continues
+          from the start of the first epoch that was not fully completed.
+        """
+        import numpy as np
+
+        ckpt_dir = Path(ckpt_dir).resolve()
+        if not ckpt_dir.is_dir():
+            raise FileNotFoundError(f"Checkpoint dir not found: {ckpt_dir}")
+
+        # --- sanity checks: same backbone / CRF / label space --------------
+        mcfg = json.loads((ckpt_dir / "model_config.json").read_text(encoding="utf-8"))
+        if mcfg["model_name"] != self.config.model.model_name:
+            raise ValueError(
+                f"Checkpoint was trained with --model {mcfg['model_name']} but this run "
+                f"uses --model {self.config.model.model_name}. Pass the same --model."
+            )
+        if bool(mcfg.get("use_crf")) != bool(self.model.use_crf):
+            raise ValueError(
+                f"Checkpoint use_crf={mcfg.get('use_crf')} but this run use_crf={self.model.use_crf}."
+            )
+        saved_l2i = json.loads((ckpt_dir / "label2id.json").read_text(encoding="utf-8"))
+        if saved_l2i != self.model.label2id:
+            raise ValueError(
+                "Label set differs from the checkpoint (different --language/--multilingual?)."
+            )
+
+        self.model.load_weights(ckpt_dir)
+        self.model.to(self.device)
+
+        steps_per_epoch = len(self.train_loader)
+        full_state = ckpt_dir / "trainer_state.pt"
+        if full_state.exists():
+            st = torch.load(full_state, map_location="cpu", weights_only=False)
+            self.optimizer.load_state_dict(st["optimizer"])
+            # LambdaLR: restores the step counter; the lambda itself comes from
+            # this run, so passing a larger --epochs extends the schedule.
+            self.scheduler.load_state_dict(st["scheduler"])
+            self.epoch = int(st["epoch"])
+            self.global_step = int(st["global_step"])
+            self.best_dev_f1 = float(st["best_dev_f1"])
+            self.best_dev_step = int(st["best_dev_step"])
+            self.best_dev_epoch = int(st["best_dev_epoch"])
+            self.patience_counter = int(st["patience_counter"])
+            self.history = list(st["history"])
+            torch.set_rng_state(st["torch_rng"])
+            if st.get("cuda_rng") is not None and torch.cuda.is_available():
+                torch.cuda.set_rng_state_all(st["cuda_rng"])
+            random.setstate(st["python_rng"])
+            np.random.set_state(st["numpy_rng"])
+            for g, s in zip(self._loader_generators(), st.get("loader_generators", [])):
+                g.set_state(s)
+            mode = "FULL (weights + optimizer + scheduler + RNG)"
+        else:
+            st = json.loads((ckpt_dir / "training_state.json").read_text(encoding="utf-8"))
+            completed = int(st["global_step"]) // steps_per_epoch
+            self.epoch = completed
+            self.global_step = completed * steps_per_epoch
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                for _ in range(self.global_step):
+                    self.scheduler.step()
+            self.best_dev_f1 = float(st.get("best_dev_f1", -1.0))
+            self.best_dev_step = int(st.get("best_dev_step", -1))
+            self.best_dev_epoch = int(st.get("best_dev_epoch", -1))
+            self.patience_counter = 0
+            self.history = list(st.get("history", []))[:completed]
+            mode = "WEIGHTS-ONLY (no trainer_state.pt; optimizer moments start fresh)"
+
+        # --- make sure output_dir/best really holds the restored best model ---
+        dst_best = self.output_dir / "best"
+        if self.best_dev_f1 >= 0:
+            def same(d: Path) -> bool:
+                f = self._best_f1_in(d)
+                return f is not None and math.isclose(f, self.best_dev_f1, abs_tol=1e-9)
+
+            if not same(dst_best):
+                src_best = ckpt_dir.parent / "best"
+                if src_best.resolve() != dst_best.resolve() and same(src_best):
+                    if dst_best.exists():
+                        shutil.rmtree(dst_best)
+                    shutil.copytree(src_best, dst_best)
+                elif self.best_dev_step == self.global_step:
+                    # The checkpoint we resume from IS the best model so far.
+                    self._save_checkpoint(tag="best")
+                else:
+                    print(
+                        f"[resume] WARNING: no matching 'best' checkpoint for dev F1 "
+                        f"{self.best_dev_f1:.4f}; best-model tracking restarts from this run."
+                    )
+                    self.best_dev_f1 = -1.0
+
+        print(
+            f"[resume] {mode}\n"
+            f"[resume] from {ckpt_dir}: completed epochs={self.epoch}, "
+            f"global_step={self.global_step}, best_dev_f1={self.best_dev_f1:.4f}, "
+            f"lr now={self.scheduler.get_last_lr()[0]:.3e}"
+        )
+        if self.epoch >= self.train_cfg.num_train_epochs:
+            print(
+                f"[resume] WARNING: checkpoint already completed {self.epoch} epochs and "
+                f"--epochs is {self.train_cfg.num_train_epochs}; nothing left to train. "
+                f"Pass a larger --epochs to continue."
+            )
+
+    def _save_checkpoint(self, tag: str, full_state: bool = False) -> None:
         ckpt_dir = self.output_dir / tag
         self.model.save(ckpt_dir, self.tokenizer)
+        if full_state and self.log_cfg.save_optimizer_state:
+            self._save_trainer_state(ckpt_dir)
         state = {
             "epoch": self.epoch,
             "global_step": self.global_step,
@@ -230,7 +399,7 @@ class Trainer:
 
     def fit(self) -> dict:
         """Run the full training loop. Returns the training history."""
-        for epoch in range(self.train_cfg.num_train_epochs):
+        for epoch in range(self.epoch, self.train_cfg.num_train_epochs):
             self.epoch = epoch + 1
             train_loss = self._train_epoch()
             print(f"Epoch {self.epoch}: train_loss={train_loss:.4f}")
@@ -241,7 +410,7 @@ class Trainer:
             self._maybe_save_best(dev_metrics, step=self.global_step)
 
             if self.log_cfg.save_every_epoch:
-                self._save_checkpoint(tag=f"epoch{self.epoch}")
+                self._save_checkpoint(tag=f"epoch{self.epoch}", full_state=True)
 
             print(
                 f"  dev_loss={dev_metrics.get('loss',0):.4f} "

@@ -54,8 +54,9 @@ class _CRF(nn.Module):
     ) -> torch.Tensor:
         """Return mean negative log-likelihood (scalar)."""
         if self._kind == "torchcrf":
-            # torchcrf.forward already returns mean NLL over the batch.
-            return self.backend(emissions, tags, mask=mask, reduction="mean")
+            # torchcrf.forward returns the LOG-LIKELIHOOD (higher = better), so
+            # negate it to get a loss to minimise.
+            return -self.backend(emissions, tags, mask=mask, reduction="mean")
         # TorchCRF: forward(h, labels, mask) may return per-sequence or summed NLL.
         # Force it to a scalar mean over the batch.
         nll = self.backend(emissions, tags, mask)
@@ -115,12 +116,44 @@ class MultilingualNER(nn.Module):
             try:
                 self.crf = _CRF(num_labels)
             except ImportError as exc:
-                print(f"[model] {exc}; falling back to linear head.")
+                print(
+                    f"[model] WARNING: {exc}; falling back to linear head. "
+                    "Install it with: pip install pytorch-crf"
+                )
                 self.use_crf = False
 
         if freeze_backbone:
             for param in self.backbone.parameters():
                 param.requires_grad = False
+
+    @staticmethod
+    def _compact(
+        logits: torch.Tensor, word_mask: torch.Tensor, labels: Optional[torch.Tensor] = None
+    ):
+        """Gather the first-subword position of every word to the left.
+
+        Labels are only defined on the first subword of each word (others are
+        -100), so the CRF / predictions must run over those positions only.
+        Otherwise predictions contain one tag per *subword* (incl. <s>, </s>)
+        and no longer line up with the gold word-level tags.
+
+        Returns (emissions [B, W, L], mask [B, W] bool, tags [B, W] or None).
+        """
+        word_mask = word_mask.bool()
+        B, _, L = logits.shape
+        lengths = word_mask.sum(dim=1)                      # (B,)
+        W = max(int(lengths.max().item()), 1)
+        # Stable sort puts True positions first, preserving their order.
+        order = torch.argsort((~word_mask).to(torch.int8), dim=1, stable=True)[:, :W]
+        emissions = logits.gather(1, order.unsqueeze(-1).expand(B, W, L))
+        mask = torch.arange(W, device=logits.device).unsqueeze(0) < lengths.unsqueeze(1)
+        tags = None
+        if labels is not None:
+            tags = labels.gather(1, order).clamp(min=0)
+            tags = tags.masked_fill(~mask, 0)
+        # torchcrf requires the first timestep of every sequence to be on.
+        mask[:, 0] = True
+        return emissions, mask, tags
 
     def forward(
         self,
@@ -138,53 +171,49 @@ class MultilingualNER(nn.Module):
         loss = None
         if labels is not None:
             if self.use_crf and self.crf is not None:
-                mask = attention_mask.bool()
-                crf_labels = labels.clamp(min=0)
-                # CRF negative log-likelihood (wrapper returns mean NLL).
-                loss = self.crf(logits, crf_labels, mask)
+                emissions, mask, tags = self._compact(logits.float(), labels != -100, labels)
+                # CRF negative log-likelihood over word-level positions (mean NLL).
+                loss = self.crf(emissions, tags, mask)
             else:
-                active_loss = attention_mask.view(-1) == 1
-                active_logits = logits.view(-1, self.num_labels)[active_loss]
-                active_labels = labels.view(-1)[active_loss]
-                valid = active_labels != -100
-                if valid.any():
-                    loss_fct = nn.CrossEntropyLoss()
-                    loss = loss_fct(active_logits[valid], active_labels[valid])
+                flat_logits = logits.float().view(-1, self.num_labels)
+                flat_labels = labels.view(-1)
+                if (flat_labels != -100).any():
+                    loss = nn.functional.cross_entropy(
+                        flat_logits, flat_labels, ignore_index=-100
+                    )
 
         return {"loss": loss, "logits": logits}
+
+    def decode(self, logits: torch.Tensor, word_mask: torch.Tensor) -> list:
+        """Decode logits into word-level tag strings (one list per sentence).
+
+        ``word_mask`` marks the first subword of every word (``labels != -100``).
+        Output length per sentence == number of words kept after truncation,
+        so it lines up exactly with the gold tags.
+        """
+        emissions, mask, _ = self._compact(logits.float(), word_mask)
+        n_words = word_mask.bool().sum(dim=1).tolist()
+        predictions: list = []
+        if self.use_crf and self.crf is not None:
+            # Viterbi decoding -> valid BIO path.
+            best_paths = self.crf.decode(emissions, mask)
+        else:
+            best_paths = emissions.argmax(dim=-1).tolist()
+        for path, n in zip(best_paths, n_words):
+            predictions.append([self.id2label[p] for p in path[:n]])
+        return predictions
 
     def predict_tags(
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
+        word_mask: torch.Tensor,
     ) -> list:
-        """Return predicted tag strings (list of lists), one per batch item.
-
-        When a CRF is attached, Viterbi decoding is used so the output tag
-        sequence is guaranteed to be a valid BIO path.
-        """
+        """Return predicted word-level tag strings (list of lists)."""
         self.eval()
         with torch.no_grad():
-            outputs = self.forward(
-                input_ids=input_ids, attention_mask=attention_mask
-            )
-        logits = outputs["logits"]  # (B, T, L)
-        mask = attention_mask.bool()
-        predictions: list = []
-
-        if self.use_crf and self.crf is not None:
-            # torchcrf.decode returns List[List[int]] (best tag index sequence).
-            best_paths = self.crf.decode(logits, mask)
-            for path in best_paths:
-                predictions.append([self.id2label[p] for p in path])
-        else:
-            for i in range(logits.shape[0]):
-                seq_mask = mask[i]
-                seq_logits = logits[i][seq_mask]
-                pred_ids = seq_logits.argmax(dim=-1).tolist()
-                predictions.append([self.id2label[p] for p in pred_ids])
-
-        return predictions
+            outputs = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+        return self.decode(outputs["logits"], word_mask)
 
     def save(self, output_dir: str | Path, tokenizer: PreTrainedTokenizerBase) -> None:
         output_dir = Path(output_dir)
@@ -216,6 +245,22 @@ class MultilingualNER(nn.Module):
         with open(output_dir / "model_config.json", "w", encoding="utf-8") as f:
             json.dump(model_cfg, f, indent=2)
 
+    def load_weights(self, ckpt_dir: str | Path) -> None:
+        """Load backbone/classifier/CRF weights from a checkpoint dir IN PLACE
+        (keeps the same parameter objects, so an existing optimizer stays valid)."""
+        ckpt_dir = Path(ckpt_dir)
+        saved_backbone = AutoModel.from_pretrained(ckpt_dir)
+        self.backbone.load_state_dict(saved_backbone.state_dict())
+        del saved_backbone
+        self.classifier.load_state_dict(
+            torch.load(ckpt_dir / "classifier.bin", map_location="cpu")
+        )
+        crf_path = ckpt_dir / "crf.bin"
+        if self.use_crf and self.crf is not None:
+            if not crf_path.exists():
+                raise FileNotFoundError(f"{crf_path} missing (checkpoint trained without CRF?)")
+            self.crf.load_state_dict(torch.load(crf_path, map_location="cpu"))
+
     @classmethod
     def load(cls, output_dir: str | Path) -> "MultilingualNER":
         output_dir = Path(output_dir)
@@ -226,14 +271,15 @@ class MultilingualNER(nn.Module):
         with open(output_dir / "model_config.json", "r", encoding="utf-8") as f:
             model_cfg = json.load(f)
 
+        # Build the backbone straight from the saved weights in output_dir.
         model = cls(
-            model_name=model_cfg["model_name"],
+            model_name=str(output_dir),
             num_labels=model_cfg["num_labels"],
             id2label=id2label,
             label2id=label2id,
             use_crf=model_cfg.get("use_crf", False),
         )
-        model.backbone = AutoModel.from_pretrained(output_dir)
+        model.model_name = model_cfg["model_name"]
 
         classifier_path = output_dir / "classifier.bin"
         if classifier_path.exists():

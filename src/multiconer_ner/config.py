@@ -84,6 +84,8 @@ class TrainConfig:
     # Temperature for language-balanced sampling (1.0 = equal per language).
     # Only used when data_config.multilingual is True.
     language_sampling_temperature: float = 1.0
+    # Checkpoint directory to resume from (e.g. models/<exp>/epoch3). None = fresh run.
+    resume_from: Optional[str] = None
 
 
 @dataclass
@@ -102,6 +104,9 @@ class LogConfig:
     save_every_epoch: bool = True
     # Save the best model (by dev F1) automatically.
     save_best_model: bool = True
+    # Store optimizer/scheduler/RNG state in each epoch checkpoint (needed for
+    # an exact resume; ~2x model size extra per checkpoint).
+    save_optimizer_state: bool = True
 
 
 @dataclass
