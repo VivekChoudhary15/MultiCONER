@@ -4,3 +4,4 @@ dataset.zip
 *.safetensors
 /outputs
 /models
+/kb_index
