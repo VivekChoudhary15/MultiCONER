@@ -36,38 +36,23 @@ def predict_split(
     Returns a list of (tokens, true_tags, pred_tags) per sentence.
 
     If ``retriever`` is provided, retrieved KB context is attached to each
-    sentence (Stage A1) before encoding.
+    sentence (Stage A1+A2) before encoding. When None, sentences are used
+    as-is (context already attached during data loading in pipeline.py).
     """
     model.eval()
     use_amp = amp and str(device).startswith("cuda")
 
-    # Attach retrieved context to sentences (Stage A1).
+    # Attach retrieved context to sentences (Stage A1+A2).
     if retriever is not None:
-<<<<<<< HEAD
         sentences = retriever.attach_context(
             list(sentences),
             language=language,
             top_k=5,
-            threshold=0.0,
+            min_score=0.0,
+            max_entries=3,
             max_tokens=context_max_tokens,
+            skip_low_confidence=True,
         )
-=======
-        ctx_sentences: List[Sentence] = []
-        for sent in sentences:
-            query = " ".join(sent.tokens)
-            entries = retriever.retrieve(
-                query,
-                language=language,
-                top_k=5,
-                threshold=0.0,
-            )
-            ctx = Retriever.context_string(entries)
-            if ctx:
-                ctx_sentences.append(replace(sent, context=ctx))
-            else:
-                ctx_sentences.append(sent)
-        sentences = ctx_sentences
->>>>>>> origin/main
 
     dataset = NERDataset(
         sentences,

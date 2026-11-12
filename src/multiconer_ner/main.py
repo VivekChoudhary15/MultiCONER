@@ -104,6 +104,26 @@ def build_parser() -> argparse.ArgumentParser:
         "--context-max-tokens", type=int, default=64,
         help="Max tokens reserved for retrieved context (Stage A1).",
     )
+    # --- Stage A2: Context filter flags ---
+    parser.add_argument(
+        "--retrieval-min-score", type=float, default=0.0,
+        help="Minimum BM25 score to accept retrieved context (Stage A2). "
+             "Sentences below this score get no context (pure A0).",
+    )
+    parser.add_argument(
+        "--max-context-entries", type=int, default=3,
+        help="Max KB entries injected per sentence (Stage A2).",
+    )
+    parser.add_argument(
+        "--skip-low-confidence", action=argparse.BooleanOptionalAction, default=True,
+        help="Skip context entirely when best BM25 score is below "
+             "--retrieval-min-score (Stage A2).",
+    )
+    parser.add_argument(
+        "--context-filter-mode", type=str, default="threshold",
+        choices=["threshold", "adaptive", "none"],
+        help="Context filtering mode (Stage A2).",
+    )
     return parser
 
 
@@ -139,6 +159,12 @@ def main() -> None:
     config.data.retrieval_top_k = args.retrieval_top_k
     config.data.retrieval_threshold = args.retrieval_threshold
     config.data.context_max_tokens = args.context_max_tokens
+
+    # --- Stage A2: Context filter config ---
+    config.data.retrieval_min_score = args.retrieval_min_score
+    config.data.max_context_entries = args.max_context_entries
+    config.data.skip_low_confidence = args.skip_low_confidence
+    config.data.context_filter_mode = args.context_filter_mode
 
     run_pipeline(config)
 

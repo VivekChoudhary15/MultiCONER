@@ -10,8 +10,9 @@ HuggingFace Transformers (XLM-RoBERTa / mDeBERTa) with PyTorch.
 |-------|------|--------|-------------|
 | **A0** | Baseline | ✅ Done | BIO repair, XLM-R + CRF, language-balanced sampling, checkpoints, TensorBoard, per-language + pooled eval |
 | **A1** | Retrieval | ✅ Done | Offline Wikipedia/Wikidata BM25 index; retrieved context injected into model input; flag-gated (`--use-retrieval`) |
+| **A2** | Context filter | ✅ Done | Relevance thresholding; limits context entries; skips low-confidence retrieval; flag-gated (A2 flags) |
 
-The pipeline does **not yet** include A2–A5 (context filter, noise training, gated fusion, ensemble). Those are planned on top of A1.
+The pipeline does **not yet** include A3–A5 (noise training, gated fusion, ensemble). Those are planned on top of A2.
 
 ## Repository layout
 
@@ -21,16 +22,16 @@ MultiCoNER/
 ├── scripts/
 │   └── build_kb.py           # Build offline KB index (Stage A1)
 ├── src/multiconer_ner/       # pipeline package
-│   ├── config.py             # all hyperparameters / paths (A0 + A1 config)
+│   ├── config.py             # all hyperparameters / paths (A0 + A1 + A2 config)
 │   ├── data.py               # CoNLL parser, BIO repair, label alignment, DataLoaders, context support
 │   ├── model.py              # MultilingualNER (XLM-R + CRF head, save/load)
 │   ├── trainer.py            # train/val loop, TensorBoard, checkpoints, early stopping on dev F1
 │   ├── evaluate.py           # seqeval P/R/F1 overall & per entity type
 │   ├── inference.py          # prediction + CoNLL/JSON output (context-aware)
 │   ├── kb.py                 # KBIndex: offline BM25 index (Stage A1)
-│   ├── retriever.py          # Retriever: context formatting (Stage A1)
-│   ├── pipeline.py           # orchestrate train -> evaluate -> predict -> save (A0 + A1)
-│   └── main.py               # CLI entry point (A0 + A1 flags)
+│   ├── retriever.py          # Retriever: context formatting + A2 relevance filter
+│   ├── pipeline.py           # orchestrate train -> evaluate -> predict -> save (A0 + A1 + A2)
+│   └── main.py               # CLI entry point (A0 + A1 + A2 flags)
 ├── models/                   # saved models (created at runtime)
 ├── runs/                     # TensorBoard event files (created at runtime)
 ├── outputs/                  # test predictions & metrics (created at runtime)
@@ -114,6 +115,36 @@ python -m src.multiconer_ner.main \
     --epochs 1  # evaluation only, uses checkpoint
 ```
 
+### Step 4 — Stage A2: Context filter (relevance gating)
+
+A2 adds relevance filtering so that retrieved context is only injected when it
+is actually useful. This directly addresses the problem where irrelevant BM25
+matches poison the model input.
+
+```bash
+# Train with retrieval + context filter (skip low-confidence matches)
+python -m src.multiconer_ner.main \
+    --language EN-English \
+    --use-retrieval \
+    --kb-index-dir ./kb_index \
+    --retrieval-min-score 1.0 \
+    --max-context-entries 3 \
+    --skip-low-confidence \
+    --epochs 5 \
+    --batch-size 16
+
+# Multilingual with retrieval + filter
+python -m src.multiconer_ner.main \
+    --multilingual \
+    --use-retrieval \
+    --kb-index-dir ./kb_index \
+    --retrieval-min-score 1.0 \
+    --max-context-entries 3 \
+    --skip-low-confidence \
+    --epochs 5 \
+    --batch-size 16
+```
+
 ### CLI options
 
 | Option | Default | Description |
@@ -136,13 +167,18 @@ python -m src.multiconer_ner.main \
 | `--retrieval-top-k` | 5 | **Stage A1:** KB entries per sentence. |
 | `--retrieval-threshold` | 0.0 | **Stage A1:** Min BM25 score to keep entry. |
 | `--context-max-tokens` | 64 | **Stage A1:** Max tokens reserved for context. |
+| `--retrieval-min-score` | 0.0 | **Stage A2:** Min BM25 score to accept context. |
+| `--max-context-entries` | 3 | **Stage A2:** Max KB entries injected per sentence. |
+| `--skip-low-confidence` | on | **Stage A2:** Skip context when best BM25 < `--retrieval-min-score`. |
+| `--context-filter-mode` | threshold | **Stage A2:** `threshold` / `adaptive` / `none`. |
 
 ## Design: flag-driven, retraining required
 
-**Important:** Stage A1 is a **training-time change**, not inference-only. The model
+**Important:** Stages A1 and A2 are **training-time changes**, not inference-only. The model
 must be retrained with `--use-retrieval` because retrieved context becomes part of
 the model input. Without the flag, the pipeline runs exactly as A0 (no retrieval,
-no context, identical behavior).
+no context, identical behavior). The A2 flags (`--retrieval-min-score`,
+`--max-context-entries`, etc.) only take effect when `--use-retrieval` is set.
 
 The retrieval flag is fully gated:
 
@@ -170,6 +206,17 @@ entirely at the data level:
    sequence. No architecture changes needed.
 4. **Inference** (`inference.py`): Same retrieval logic is applied at prediction time
    so the model sees context at test time exactly as it did during training.
+
+**Stage A2 — Context filter (relevance gating):**
+
+| A2 component | How it works |
+|--------------|--------------|
+| **Relevance threshold** (`--retrieval-min-score`) | Only inject context when the best BM25 score meets the threshold. Sentences below it get pure A0 (no context). |
+| **Max context entries** (`--max-context-entries`) | Cap context at N entries (default 3) so irrelevant matches don't dominate the input. |
+| **Skip low-confidence** (`--skip-low-confidence`) | When enabled and no entry clears the threshold, the sentence is left unchanged — effectively falling back to A0 for that instance. |
+| **Per-language behavior** | Different languages have different Wikipedia coverage; tune `--retrieval-min-score` per language on dev F1. |
+
+This directly addresses the finding that **unfiltered retrieval hurts performance** (irrelevant context confuses the model). PAI observed retrieval benefits only on clean subsets; A2 makes retrieval safe on noisy data by skipping low-confidence matches.
 
 ## Outputs
 

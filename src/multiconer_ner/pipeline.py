@@ -2,12 +2,14 @@
 End-to-end pipeline: load CoNLL data, build label set, train, evaluate,
 save model + predictions.
 
-Implements ablation A0 (baseline):
-  * BIO-repaired tag sequences
-  * XLM-RoBERTa + linear-chain CRF token classifier
-  * Language-balanced sampling for multilingual training
-  * Validation-based checkpointing + early stopping on dev F1
-  * Per-language + pooled test evaluation
+Implements ablation A0 (baseline) and A1/A2 (retrieval + context filter):
+
+  * A0: BIO-repaired tag sequences, XLM-RoBERTa + CRF,
+        language-balanced sampling, checkpoints, early stopping on dev F1,
+        per-language + pooled test evaluation.
+  * A1: Wikipedia/Wikidata retrieval; retrieved context injected into input.
+  * A2: Relevance filtering -- skip context when BM25 score is below a
+        threshold; cap context entries; per-language filtering.
 """
 
 from __future__ import annotations
@@ -144,7 +146,8 @@ def run_pipeline(config: Config) -> dict:
     tokenizer = AutoTokenizer.from_pretrained(config.model.model_name)
 
     # ------------------------------------------------------------------ #
-    # 3b. Stage A1: Retrieval -- build/load KB index and attach context.
+    # 3b. Stage A1+A2: Retrieval + context filter.
+    #    Build/load KB index, then attach filtered context to sentences.
     # ------------------------------------------------------------------ #
     retriever: Optional[Retriever] = None
     if data_cfg.use_retrieval:
@@ -153,19 +156,7 @@ def run_pipeline(config: Config) -> dict:
             logger.info(
                 f"[A1] Building KB index at {kb_dir} (languages: {languages})"
             )
-            kb = KBIndex()
-<<<<<<< HEAD
-            # Build from training entity mentions via Wikipedia API
-            # (scripts/build_kb.py is not part of the package).
-            import sys
-            from .config import project_root
-
-            sys.path.insert(0, str(project_root() / "scripts"))
-            from build_kb import build_kb_index
-=======
-            # Build from training entity mentions via Wikipedia API.
             from multiconer_ner.scripts.build_kb import build_kb_index
->>>>>>> origin/main
 
             kb = build_kb_index(
                 languages=languages,
@@ -179,51 +170,33 @@ def run_pipeline(config: Config) -> dict:
             kb = KBIndex.load(kb_dir)
         retriever = Retriever(kb)
 
-        # Attach retrieved context to every sentence (train/val/test).
-<<<<<<< HEAD
-        # Batched sparse BM25; context is cut to context_max_tokens here
-        # (NERDataset applies the same cut) to keep memory low on big test sets.
-        import time
-
+        # Attach retrieved context with A2 relevance filtering.
+        # Sentences whose best BM25 score < retrieval_min_score are left
+        # without context (pure A0 behavior for those instances).
         for lang in languages:
             for split_name, split_dict in (
                 ("train", train_sentences_by_lang),
                 ("dev", val_sentences_by_lang),
                 ("test", test_sentences_by_lang),
             ):
+                import time
+
                 t0 = time.time()
                 split_dict[lang] = retriever.attach_context(
                     split_dict[lang],
                     language=lang,
                     top_k=data_cfg.retrieval_top_k,
-                    threshold=data_cfg.retrieval_threshold,
+                    min_score=data_cfg.retrieval_min_score,
+                    max_entries=data_cfg.max_context_entries,
                     max_tokens=data_cfg.context_max_tokens,
+                    skip_low_confidence=data_cfg.skip_low_confidence,
                 )
                 n_ctx = sum(1 for s in split_dict[lang] if s.context)
                 logger.info(
-                    f"[A1] {lang}/{split_name}: context attached to "
+                    f"[A1+A2] {lang}/{split_name}: context attached to "
                     f"{n_ctx}/{len(split_dict[lang])} sentences "
                     f"({time.time() - t0:.1f}s)"
                 )
-=======
-        for lang in languages:
-            for split_dict in (
-                train_sentences_by_lang,
-                val_sentences_by_lang,
-                test_sentences_by_lang,
-            ):
-                for i, sent in enumerate(split_dict[lang]):
-                    query = " ".join(sent.tokens)
-                    entries = retriever.retrieve(
-                        query,
-                        language=lang,
-                        top_k=data_cfg.retrieval_top_k,
-                        threshold=data_cfg.retrieval_threshold,
-                    )
-                    ctx = Retriever.context_string(entries)
-                    if ctx:
-                        split_dict[lang][i] = replace(sent, context=ctx)
->>>>>>> origin/main
 
     # ------------------------------------------------------------------ #
     # 4. Combine sentences across languages and build DataLoaders.
@@ -313,6 +286,8 @@ def run_pipeline(config: Config) -> dict:
 
     # ------------------------------------------------------------------ #
     # 8. Final evaluation on test set (per language + pooled).
+    #    Test sentences already carry retrieved context from step 3b, so we
+    #    do NOT re-retrieve here (pass retriever=None).
     # ------------------------------------------------------------------ #
     final_model = MultilingualNER.load(final_model_dir)
     final_model.to(device)
@@ -333,13 +308,7 @@ def run_pipeline(config: Config) -> dict:
             max_length=data_cfg.max_length,
             lowercase=data_cfg.lowercase,
             amp=config.train.fp16,
-<<<<<<< HEAD
-            # Test sentences already carry retrieved context (step 3b);
-            # passing the retriever again would repeat the retrieval.
-            retriever=None,
-=======
-            retriever=retriever,
->>>>>>> origin/main
+            retriever=None,  # context already attached in step 3b
             language=lang,
             context_max_tokens=data_cfg.context_max_tokens,
         )

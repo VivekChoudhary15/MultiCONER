@@ -47,6 +47,12 @@ class DataConfig:
     retrieval_threshold: float = 0.0
     context_max_tokens: int = 64
 
+    # --- Stage A2: Context filter configuration ---
+    retrieval_min_score: float = 0.0          # Minimum BM25 score to accept context
+    max_context_entries: int = 3              # Max KB entries injected per sentence
+    skip_low_confidence: bool = True          # Skip context entirely when below threshold
+    context_filter_mode: str = "threshold"    # "threshold" | "adaptive" | "none"
+
 
 @dataclass
 class ModelConfig:
