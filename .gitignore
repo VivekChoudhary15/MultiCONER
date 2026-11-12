@@ -5,3 +5,8 @@ dataset.zip
 /outputs
 /models
 /kb_index
+kb_index/entries.json
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
