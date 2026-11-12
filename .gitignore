@@ -2,6 +2,7 @@
 dataset
 dataset.zip
 *.safetensors
+<<<<<<< HEAD
 /outputs
 /models
 /kb_index
@@ -10,3 +11,6 @@ kb_index/entries.json
 __pycache__/
 *.pyc
 *.pyo
+=======
+/outputs
+>>>>>>> origin/main

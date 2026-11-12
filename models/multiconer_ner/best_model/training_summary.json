@@ -156,6 +156,7 @@
     "ZH-Chinese"
   ],
   "model_name": "xlm-roberta-base",
+<<<<<<< HEAD
   "output_dir": "/DATA/MultiCONER/models/multiconer_ner/best_model",
   "pooled_test_metrics": {
     "overall_precision": 0.707951212675784,
@@ -3094,4 +3095,7 @@
       }
     }
   ]
+=======
+  "output_dir": "/DATA/MultiCONER/models/multiconer_ner/best_model"
+>>>>>>> origin/main
 }

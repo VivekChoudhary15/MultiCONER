@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+<<<<<<< HEAD
 """Build offline Wikipedia KB index for MultiCoNER retrieval (Stage A1).
 
 Extracts entity mentions from training data, fetches intro extracts from the
@@ -13,11 +14,22 @@ retried on the next run (use --rebuild to regenerate entries.json).
 Usage:
     python scripts/build_kb.py --languages EN-English BN-Bangla --output ./kb_index
     python scripts/build_kb.py --languages all --output ./kb_index --rebuild
+=======
+"""Build offline Wikipedia/Wikidata KB index for MultiCoNER retrieval (Stage A1).
+
+Extracts entity mentions from training data, fetches descriptions from
+Wikipedia/Wikidata APIs, and builds a BM25 index saved to disk.
+
+Usage:
+    python scripts/build_kb.py --languages en bn hi --output ./kb_index
+    python scripts/build_kb.py --languages all --data-root dataset/multiconer2023 --output ./kb_index --rebuild
+>>>>>>> origin/main
 """
 
 from __future__ import annotations
 
 import argparse
+<<<<<<< HEAD
 import json
 import os
 import sys
@@ -29,6 +41,14 @@ from typing import Dict, List, Optional, Sequence, Set
 
 # Ensure src/ is on sys.path when run as `python scripts/build_kb.py`
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+=======
+import sys
+from pathlib import Path
+from typing import List, Set
+
+# Ensure the project root is on sys.path when run as `python scripts/build_kb.py`
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+>>>>>>> origin/main
 
 import requests
 
@@ -36,6 +56,7 @@ from multiconer_ner.data import load_split_sentences
 from multiconer_ner.kb import KBEntry, KBIndex
 
 WIKIPEDIA_API = "https://{lang}.wikipedia.org/w/api.php"
+<<<<<<< HEAD
 # Wikimedia rejects requests without a User-Agent (HTTP 403). Clients whose
 # User-Agent has no contact info (email or URL) are "unidentified" and limited
 # to 10 requests/min; with contact info the limit is 200 requests/min and at
@@ -95,6 +116,8 @@ def log(msg: str) -> None:
 def lang_code_of(lang: str) -> str:
     """Map folder name to Wikipedia language code (e.g. "EN-English" -> "en")."""
     return lang.split("-")[0].lower() if "-" in lang else lang.lower()
+=======
+>>>>>>> origin/main
 
 
 def extract_entity_mentions(sentences) -> Set[str]:
@@ -121,6 +144,7 @@ def extract_entity_mentions(sentences) -> Set[str]:
     return mentions
 
 
+<<<<<<< HEAD
 # --------------------------------------------------------------------------- #
 # Wikipedia API
 # --------------------------------------------------------------------------- #
@@ -298,12 +322,39 @@ def search_text(mention: str, description: str, lang_code: str) -> str:
 # --------------------------------------------------------------------------- #
 # Build
 # --------------------------------------------------------------------------- #
+=======
+def fetch_wikipedia_description(title: str, lang: str = "en") -> str:
+    """Fetch short description from Wikipedia API."""
+    try:
+        params = {
+            "action": "query",
+            "prop": "extracts",
+            "exintro": True,
+            "explaintext": True,
+            "titles": title,
+            "format": "json",
+            "redirects": 1,
+        }
+        resp = requests.get(WIKIPEDIA_API.format(lang=lang), params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        pages = data.get("query", {}).get("pages", {})
+        for page in pages.values():
+            extract = page.get("extract", "")
+            return extract[:500]
+    except Exception:
+        return ""
+    return ""
+
+
+>>>>>>> origin/main
 def build_kb_index(
     languages: List[str],
     data_root: str,
     output_dir: str | Path,
     train_splits: List[str] = None,
     rebuild: bool = False,
+<<<<<<< HEAD
     workers: int = MAX_WORKERS,
     max_mentions: Optional[int] = None,
     contact: Optional[str] = None,
@@ -417,6 +468,49 @@ def build_kb_index(
             if qid in seen_qids:
                 continue
             seen_qids.add(qid)
+=======
+) -> KBIndex:
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if not rebuild and (output_dir / "entries.json").exists():
+        print(f"[build_kb] Loading existing index from {output_dir}")
+        return KBIndex.load(output_dir)
+
+    print(f"[build_kb] Building new KB index for languages: {languages}")
+    entries: List[KBEntry] = []
+    seen_qids: Set[str] = set()
+
+    for lang in languages:
+        # Map folder name to Wikipedia language code (e.g. "EN-English" -> "en")
+        lang_code = lang.split("-")[0].lower() if "-" in lang else lang.lower()
+
+        # Load training sentences to extract entity mentions
+        try:
+            train_sentences = []
+            for split in (train_splits or ["train"]):
+                train_sentences.extend(
+                    load_split_sentences(data_root, lang, split)
+                )
+        except FileNotFoundError:
+            print(f"[build_kb] No training data for {lang}, skipping.")
+            continue
+
+        mentions = extract_entity_mentions(train_sentences)
+        print(f"[build_kb] {lang}: {len(mentions)} unique entity mentions")
+
+        for mention in mentions:
+            description = fetch_wikipedia_description(mention, lang=lang_code)
+            if not description:
+                description = mention  # Fallback: use mention text itself
+
+            qid = f"wiki:{lang_code}:{mention.replace(' ', '_')}"
+            if qid in seen_qids:
+                continue
+            seen_qids.add(qid)
+
+            text = f"{mention} {description}".strip()
+>>>>>>> origin/main
             entries.append(
                 KBEntry(
                     qid=qid,
@@ -425,6 +519,7 @@ def build_kb_index(
                     aliases=[],
                     entity_type=None,
                     language=lang,
+<<<<<<< HEAD
                     text=search_text(mention, description, code),
                 )
             )
@@ -436,14 +531,27 @@ def build_kb_index(
     if n_failed:
         log(f"WARNING: {n_failed} mentions failed to fetch and use the fallback text. "
             "Re-run the same command with --rebuild to retry only those.")
+=======
+                    text=text,
+                )
+            )
+
+    index = KBIndex(entries)
+    index.save(output_dir)
+    print(f"[build_kb] Saved {len(entries)} entries to {output_dir}")
+>>>>>>> origin/main
     return index
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build MultiCoNER KB index")
     parser.add_argument(
+<<<<<<< HEAD
         "--languages", nargs="+", required=True,
         help="Language folders (e.g. EN-English BN-Bangla) or 'all'",
+=======
+        "--languages", nargs="+", required=True, help="Language folders (e.g. en bn hi)"
+>>>>>>> origin/main
     )
     parser.add_argument(
         "--data-root", default="dataset/multiconer2023", help="Path to dataset root"
@@ -452,6 +560,7 @@ def main() -> None:
         "--output", default="./kb_index", help="Output directory for KB index"
     )
     parser.add_argument(
+<<<<<<< HEAD
         "--train-splits", nargs="+", default=["train"],
         help="Splits to extract entity mentions from",
     )
@@ -479,6 +588,17 @@ def main() -> None:
     parser.add_argument(
         "--max-mentions", type=int, default=None,
         help="Only use the first N mentions per language (for quick tests)",
+=======
+        "--train-splits",
+        nargs="+",
+        default=["train"],
+        help="Splits to extract entity mentions from",
+    )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Force rebuild the KB index even if it exists",
+>>>>>>> origin/main
     )
     args = parser.parse_args()
 
@@ -488,11 +608,14 @@ def main() -> None:
         output_dir=args.output,
         train_splits=args.train_splits,
         rebuild=args.rebuild,
+<<<<<<< HEAD
         workers=args.workers,
         max_mentions=args.max_mentions,
         contact=args.contact,
         requests_per_minute=args.requests_per_minute,
         case_retry=not args.no_case_retry,
+=======
+>>>>>>> origin/main
     )
 
 

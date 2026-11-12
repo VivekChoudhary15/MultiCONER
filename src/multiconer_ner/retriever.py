@@ -7,12 +7,19 @@ prepending to model input.
 
 from __future__ import annotations
 
+<<<<<<< HEAD
 from typing import List, Optional, Sequence, Tuple, Union
 
 from .kb import KBEntry, KBIndex
 
 Hit = Union[KBEntry, Tuple[KBEntry, float]]
 
+=======
+from typing import List, Optional, Tuple
+
+from .kb import KBEntry, KBIndex
+
+>>>>>>> origin/main
 
 class Retriever:
     """Thin wrapper around KBIndex with context formatting."""
@@ -26,11 +33,16 @@ class Retriever:
         language: Optional[str] = None,
         top_k: int = 5,
         threshold: float = 0.0,
+<<<<<<< HEAD
     ) -> List[Tuple[KBEntry, float]]:
+=======
+    ) -> List[KBEntry]:
+>>>>>>> origin/main
         return self.kb.search(
             sentence, language=language, top_k=top_k, threshold=threshold
         )
 
+<<<<<<< HEAD
     def retrieve_batch(
         self,
         sentences: Sequence[str],
@@ -85,3 +97,15 @@ class Retriever:
             ctx = self.context_string(h, max_tokens=max_tokens)
             out.append(replace(sent, context=ctx) if ctx else sent)
         return out
+=======
+    @staticmethod
+    def context_string(entries: List[KBEntry], max_entries: int = 5) -> str:
+        """Format retrieved entries into a context string for model input."""
+        if not entries:
+            return ""
+        parts = []
+        for entry in entries[:max_entries]:
+            desc = entry.description or entry.title
+            parts.append(f"[KB] {entry.title}: {desc}")
+        return " ".join(parts)
+>>>>>>> origin/main

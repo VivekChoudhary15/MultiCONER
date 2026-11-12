@@ -9,6 +9,7 @@ training/inference runs.
 from __future__ import annotations
 
 import json
+<<<<<<< HEAD
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,6 +17,13 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 from scipy.sparse import csr_matrix
+=======
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+from rank_bm25 import BM25Okapi
+>>>>>>> origin/main
 
 
 @dataclass
@@ -46,6 +54,7 @@ class KBEntry:
         return cls(**d)
 
 
+<<<<<<< HEAD
 class _SparseBM25:
     """Vectorised BM25Okapi (same formula/defaults as ``rank_bm25.BM25Okapi``).
 
@@ -113,11 +122,14 @@ class _SparseBM25:
         return (q_mat @ self.weights_t).toarray()
 
 
+=======
+>>>>>>> origin/main
 class KBIndex:
     """
     Offline KB index with BM25 retrieval.
 
     Stores KBEntry objects and a BM25 index built over their ``text`` field.
+<<<<<<< HEAD
     A separate BM25 index (own IDF statistics) is built lazily per language,
     plus one over all entries for ``language=None``.
     Supports saving/loading to disk for reuse across runs.
@@ -149,6 +161,25 @@ class KBIndex:
             corpus = [self.entries[i].text.lower().split() for i in idx]
             self._indexes[key] = (idx, _SparseBM25(corpus))
         return self._indexes[key]
+=======
+    Supports saving/loading to disk for reuse across runs.
+    """
+
+    def __init__(self, entries: Optional[List[KBEntry]] = None):
+        self.entries: List[KBEntry] = entries or []
+        self._bm25: Optional[BM25Okapi] = None
+        self._tokenized_corpus: Optional[List[List[str]]] = None
+        if self.entries:
+            self._build_bm25()
+
+    def _build_bm25(self) -> None:
+        self._tokenized_corpus = [e.text.lower().split() for e in self.entries]
+        self._bm25 = BM25Okapi(self._tokenized_corpus)
+
+    def add(self, entry: KBEntry) -> None:
+        self.entries.append(entry)
+        self._build_bm25()
+>>>>>>> origin/main
 
     def search(
         self,
@@ -157,11 +188,16 @@ class KBIndex:
         top_k: int = 5,
         threshold: float = 0.0,
     ) -> List[Tuple[KBEntry, float]]:
+<<<<<<< HEAD
         """Retrieve top-k (entry, score) pairs for a query using BM25.
+=======
+        """Retrieve top-k entries for a query using BM25.
+>>>>>>> origin/main
 
         If ``language`` is given, only entries matching that language are
         considered, which keeps retrieval relevant for multilingual training.
         """
+<<<<<<< HEAD
         return self.search_batch([query], language, top_k, threshold)[0]
 
     def search_batch(
@@ -196,6 +232,31 @@ class KBIndex:
                     s = float(row_scores[o])
                     if s > threshold:
                         out.append((self.entries[entry_idx[row[o]]], s))
+=======
+        if self._bm25 is None or not self.entries:
+            return []
+
+        if language is not None:
+            candidate_indices = [
+                i for i, e in enumerate(self.entries) if e.language == language
+            ]
+        else:
+            candidate_indices = list(range(len(self.entries)))
+
+        if not candidate_indices:
+            return []
+
+        tokenized_query = query.lower().split()
+        scores = self._bm25.get_scores(tokenized_query)
+
+        candidate_scores = [(i, scores[i]) for i in candidate_indices]
+        candidate_scores.sort(key=lambda x: x[1], reverse=True)
+
+        results: List[Tuple[KBEntry, float]] = []
+        for idx, score in candidate_scores[:top_k]:
+            if score > threshold:
+                results.append((self.entries[idx], float(score)))
+>>>>>>> origin/main
         return results
 
     def save(self, directory: str | Path) -> None:

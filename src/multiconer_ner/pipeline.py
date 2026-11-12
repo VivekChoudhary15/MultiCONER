@@ -154,6 +154,7 @@ def run_pipeline(config: Config) -> dict:
                 f"[A1] Building KB index at {kb_dir} (languages: {languages})"
             )
             kb = KBIndex()
+<<<<<<< HEAD
             # Build from training entity mentions via Wikipedia API
             # (scripts/build_kb.py is not part of the package).
             import sys
@@ -161,6 +162,10 @@ def run_pipeline(config: Config) -> dict:
 
             sys.path.insert(0, str(project_root() / "scripts"))
             from build_kb import build_kb_index
+=======
+            # Build from training entity mentions via Wikipedia API.
+            from multiconer_ner.scripts.build_kb import build_kb_index
+>>>>>>> origin/main
 
             kb = build_kb_index(
                 languages=languages,
@@ -175,6 +180,7 @@ def run_pipeline(config: Config) -> dict:
         retriever = Retriever(kb)
 
         # Attach retrieved context to every sentence (train/val/test).
+<<<<<<< HEAD
         # Batched sparse BM25; context is cut to context_max_tokens here
         # (NERDataset applies the same cut) to keep memory low on big test sets.
         import time
@@ -199,6 +205,25 @@ def run_pipeline(config: Config) -> dict:
                     f"{n_ctx}/{len(split_dict[lang])} sentences "
                     f"({time.time() - t0:.1f}s)"
                 )
+=======
+        for lang in languages:
+            for split_dict in (
+                train_sentences_by_lang,
+                val_sentences_by_lang,
+                test_sentences_by_lang,
+            ):
+                for i, sent in enumerate(split_dict[lang]):
+                    query = " ".join(sent.tokens)
+                    entries = retriever.retrieve(
+                        query,
+                        language=lang,
+                        top_k=data_cfg.retrieval_top_k,
+                        threshold=data_cfg.retrieval_threshold,
+                    )
+                    ctx = Retriever.context_string(entries)
+                    if ctx:
+                        split_dict[lang][i] = replace(sent, context=ctx)
+>>>>>>> origin/main
 
     # ------------------------------------------------------------------ #
     # 4. Combine sentences across languages and build DataLoaders.
@@ -308,9 +333,13 @@ def run_pipeline(config: Config) -> dict:
             max_length=data_cfg.max_length,
             lowercase=data_cfg.lowercase,
             amp=config.train.fp16,
+<<<<<<< HEAD
             # Test sentences already carry retrieved context (step 3b);
             # passing the retriever again would repeat the retrieval.
             retriever=None,
+=======
+            retriever=retriever,
+>>>>>>> origin/main
             language=lang,
             context_max_tokens=data_cfg.context_max_tokens,
         )
