@@ -3,3 +3,4 @@ dataset
 dataset.zip
 *.safetensors
 /outputs
+/models

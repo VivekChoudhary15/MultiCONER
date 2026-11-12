@@ -1,0 +1,200 @@
+=== Wed Nov 11 23:25:03 IST 2026 | host dslab | GPU 0
+=== .venv/bin/python scripts/build_kb.py --languages EN-English BN-Bangla HI-Hindi DE-German ES-Spanish FR-French IT-Italian PT-Portuguese SV-Swedish UK-Ukrainian FA-Farsi ZH-Chinese --output ./kb_index
+[build_kb 23:25:05] Building KB index for languages: ['EN-English', 'BN-Bangla', 'HI-Hindi', 'DE-German', 'ES-Spanish', 'FR-French', 'IT-Italian', 'PT-Portuguese', 'SV-Swedish', 'UK-Ukrainian', 'FA-Farsi', 'ZH-Chinese']
+[build_kb 23:25:05] User-Agent: MultiCoNER-KB-builder/0.3 (academic NER research; b25200@students.iitmandi.ac.in) python-requests/2.34.2
+[build_kb 23:25:05] Rate limit: 180 requests/min
+[build_kb 23:25:06] EN-English: 20440 unique mentions, 0 cached, 20440 to fetch
+[build_kb 23:25:06] BN-Bangla: 5997 unique mentions, 0 cached, 5997 to fetch
+[build_kb 23:25:06] HI-Hindi: 5138 unique mentions, 0 cached, 5138 to fetch
+[build_kb 23:25:06] DE-German: 11413 unique mentions, 0 cached, 11413 to fetch
+[build_kb 23:25:07] ES-Spanish: 16886 unique mentions, 0 cached, 16886 to fetch
+[build_kb 23:25:07] FR-French: 18832 unique mentions, 0 cached, 18832 to fetch
+[build_kb 23:25:07] IT-Italian: 18782 unique mentions, 0 cached, 18782 to fetch
+[build_kb 23:25:08] PT-Portuguese: 15673 unique mentions, 0 cached, 15673 to fetch
+[build_kb 23:25:08] SV-Swedish: 14864 unique mentions, 0 cached, 14864 to fetch
+[build_kb 23:25:09] UK-Ukrainian: 15282 unique mentions, 0 cached, 15282 to fetch
+[build_kb 23:25:09] FA-Farsi: 14602 unique mentions, 0 cached, 14602 to fetch
+[build_kb 23:25:10] ZH-Chinese: 10230 unique mentions, 0 cached, 10230 to fetch
+[build_kb 23:25:10] Fetching 168139 titles in 8413 requests with 3 workers
+[build_kb 23:25:45] progress 1000/168139 titles (0.6%), 28.2 titles/s, ETA 98.7 min, failed 0
+[build_kb 23:26:22] progress 2000/168139 titles (1.2%), 27.6 titles/s, ETA 100.2 min, failed 0
+[build_kb 23:26:57] progress 3000/168139 titles (1.8%), 27.9 titles/s, ETA 98.8 min, failed 0
+[build_kb 23:27:32] progress 4000/168139 titles (2.4%), 28.1 titles/s, ETA 97.3 min, failed 0
+[build_kb 23:28:07] progress 5000/168139 titles (3.0%), 28.2 titles/s, ETA 96.3 min, failed 0
+[build_kb 23:28:43] progress 6000/168139 titles (3.6%), 28.1 titles/s, ETA 96.3 min, failed 0
+[build_kb 23:29:20] progress 7000/168139 titles (4.2%), 28.0 titles/s, ETA 96.0 min, failed 0
+[build_kb 23:29:54] progress 8000/168139 titles (4.8%), 28.1 titles/s, ETA 95.0 min, failed 0
+[build_kb 23:30:30] progress 9000/168139 titles (5.4%), 28.1 titles/s, ETA 94.5 min, failed 0
+[build_kb 23:31:08] progress 10000/168139 titles (5.9%), 27.9 titles/s, ETA 94.5 min, failed 0
+[build_kb 23:31:45] progress 11000/168139 titles (6.5%), 27.8 titles/s, ETA 94.2 min, failed 0
+[build_kb 23:32:24] progress 12000/168139 titles (7.1%), 27.7 titles/s, ETA 94.1 min, failed 0
+[build_kb 23:32:57] progress 13000/168139 titles (7.7%), 27.8 titles/s, ETA 92.9 min, failed 0
+[build_kb 23:33:32] progress 14000/168139 titles (8.3%), 27.9 titles/s, ETA 92.2 min, failed 0
+[build_kb 23:34:06] progress 15000/168139 titles (8.9%), 28.0 titles/s, ETA 91.2 min, failed 0
+[build_kb 23:34:40] progress 16000/168139 titles (9.5%), 28.0 titles/s, ETA 90.4 min, failed 0
+[build_kb 23:35:17] progress 17000/168139 titles (10.1%), 28.0 titles/s, ETA 89.9 min, failed 0
+[build_kb 23:35:49] progress 18000/168139 titles (10.7%), 28.1 titles/s, ETA 89.0 min, failed 0
+[build_kb 23:36:27] progress 19000/168139 titles (11.3%), 28.0 titles/s, ETA 88.7 min, failed 0
+[build_kb 23:37:03] progress 20000/168139 titles (11.9%), 28.0 titles/s, ETA 88.1 min, failed 0
+[build_kb 23:38:02] progress 21000/168139 titles (12.5%), 27.2 titles/s, ETA 90.2 min, failed 0
+[build_kb 23:39:13] progress 22000/168139 titles (13.1%), 26.1 titles/s, ETA 93.4 min, failed 0
+[build_kb 23:40:24] progress 23000/168139 titles (13.7%), 25.1 titles/s, ETA 96.2 min, failed 0
+[build_kb 23:41:28] progress 24000/168139 titles (14.3%), 24.5 titles/s, ETA 98.0 min, failed 0
+[build_kb 23:42:40] progress 25000/168139 titles (14.9%), 23.8 titles/s, ETA 100.3 min, failed 0
+[build_kb 23:43:56] progress 26000/168139 titles (15.5%), 23.1 titles/s, ETA 102.6 min, failed 0
+[build_kb 23:44:44] progress 26997/168139 titles (16.1%), 23.0 titles/s, ETA 102.4 min, failed 0
+[build_kb 23:45:30] progress 27997/168139 titles (16.7%), 22.9 titles/s, ETA 101.9 min, failed 0
+[build_kb 23:46:14] progress 28997/168139 titles (17.2%), 22.9 titles/s, ETA 101.1 min, failed 0
+[build_kb 23:47:00] progress 29997/168139 titles (17.8%), 22.9 titles/s, ETA 100.6 min, failed 0
+[build_kb 23:47:44] progress 30997/168139 titles (18.4%), 22.9 titles/s, ETA 99.9 min, failed 0
+[build_kb 23:48:23] progress 31995/168139 titles (19.0%), 23.0 titles/s, ETA 98.8 min, failed 0
+[build_kb 23:49:02] progress 32995/168139 titles (19.6%), 23.0 titles/s, ETA 97.8 min, failed 0
+[build_kb 23:49:38] progress 33995/168139 titles (20.2%), 23.2 titles/s, ETA 96.6 min, failed 0
+[build_kb 23:50:14] progress 34995/168139 titles (20.8%), 23.3 titles/s, ETA 95.4 min, failed 0
+[build_kb 23:50:52] progress 35995/168139 titles (21.4%), 23.3 titles/s, ETA 94.4 min, failed 0
+[build_kb 23:51:28] progress 36995/168139 titles (22.0%), 23.4 titles/s, ETA 93.3 min, failed 0
+[build_kb 23:52:08] progress 37995/168139 titles (22.6%), 23.5 titles/s, ETA 92.4 min, failed 0
+[build_kb 23:52:43] progress 38995/168139 titles (23.2%), 23.6 titles/s, ETA 91.3 min, failed 0
+[build_kb 23:53:20] progress 39995/168139 titles (23.8%), 23.7 titles/s, ETA 90.3 min, failed 0
+[build_kb 23:53:57] progress 40995/168139 titles (24.4%), 23.7 titles/s, ETA 89.3 min, failed 0
+[build_kb 23:54:34] progress 41995/168139 titles (25.0%), 23.8 titles/s, ETA 88.3 min, failed 0
+[build_kb 23:55:11] progress 42988/168139 titles (25.6%), 23.9 titles/s, ETA 87.4 min, failed 0
+[build_kb 23:55:54] progress 43988/168139 titles (26.2%), 23.8 titles/s, ETA 86.8 min, failed 0
+[build_kb 23:56:34] progress 44988/168139 titles (26.8%), 23.9 titles/s, ETA 86.0 min, failed 0
+[build_kb 23:57:14] progress 45988/168139 titles (27.4%), 23.9 titles/s, ETA 85.2 min, failed 0
+[build_kb 23:57:58] progress 46988/168139 titles (27.9%), 23.9 titles/s, ETA 84.6 min, failed 0
+[build_kb 23:58:41] progress 47988/168139 titles (28.5%), 23.9 titles/s, ETA 83.9 min, failed 0
+[build_kb 23:59:21] progress 48988/168139 titles (29.1%), 23.9 titles/s, ETA 83.1 min, failed 0
+[build_kb 00:00:03] progress 49988/168139 titles (29.7%), 23.9 titles/s, ETA 82.5 min, failed 0
+[build_kb 00:00:48] progress 50988/168139 titles (30.3%), 23.8 titles/s, ETA 81.9 min, failed 0
+[build_kb 00:01:37] progress 51988/168139 titles (30.9%), 23.8 titles/s, ETA 81.5 min, failed 0
+[build_kb 00:02:21] progress 52988/168139 titles (31.5%), 23.7 titles/s, ETA 80.8 min, failed 0
+[build_kb 00:03:09] progress 53988/168139 titles (32.1%), 23.7 titles/s, ETA 80.3 min, failed 0
+[build_kb 00:03:53] progress 54988/168139 titles (32.7%), 23.7 titles/s, ETA 79.7 min, failed 0
+[build_kb 00:04:38] progress 55988/168139 titles (33.3%), 23.6 titles/s, ETA 79.1 min, failed 0
+[build_kb 00:05:23] progress 56988/168139 titles (33.9%), 23.6 titles/s, ETA 78.5 min, failed 0
+[build_kb 00:06:07] progress 57988/168139 titles (34.5%), 23.6 titles/s, ETA 77.8 min, failed 0
+[build_kb 00:06:46] progress 58988/168139 titles (35.1%), 23.6 titles/s, ETA 77.0 min, failed 0
+[build_kb 00:07:25] progress 59974/168139 titles (35.7%), 23.7 titles/s, ETA 76.2 min, failed 0
+[build_kb 00:07:59] progress 60974/168139 titles (36.3%), 23.7 titles/s, ETA 75.3 min, failed 0
+[build_kb 00:08:35] progress 61974/168139 titles (36.9%), 23.8 titles/s, ETA 74.4 min, failed 0
+[build_kb 00:09:12] progress 62974/168139 titles (37.5%), 23.8 titles/s, ETA 73.5 min, failed 0
+[build_kb 00:09:46] progress 63974/168139 titles (38.0%), 23.9 titles/s, ETA 72.6 min, failed 0
+[build_kb 00:10:28] progress 64974/168139 titles (38.6%), 23.9 titles/s, ETA 71.9 min, failed 0
+[build_kb 00:11:05] progress 65974/168139 titles (39.2%), 23.9 titles/s, ETA 71.1 min, failed 0
+[build_kb 00:11:46] progress 66974/168139 titles (39.8%), 23.9 titles/s, ETA 70.4 min, failed 0
+[build_kb 00:12:25] progress 67974/168139 titles (40.4%), 24.0 titles/s, ETA 69.6 min, failed 0
+[build_kb 00:13:09] progress 68974/168139 titles (41.0%), 24.0 titles/s, ETA 69.0 min, failed 0
+[build_kb 00:13:47] progress 69974/168139 titles (41.6%), 24.0 titles/s, ETA 68.2 min, failed 0
+[build_kb 00:14:23] progress 70974/168139 titles (42.2%), 24.0 titles/s, ETA 67.4 min, failed 0
+[build_kb 00:15:09] progress 71974/168139 titles (42.8%), 24.0 titles/s, ETA 66.8 min, failed 0
+[build_kb 00:15:45] progress 72974/168139 titles (43.4%), 24.0 titles/s, ETA 66.0 min, failed 0
+[build_kb 00:16:23] progress 73974/168139 titles (44.0%), 24.1 titles/s, ETA 65.2 min, failed 0
+[build_kb 00:17:01] progress 74974/168139 titles (44.6%), 24.1 titles/s, ETA 64.4 min, failed 0
+[build_kb 00:17:41] progress 75974/168139 titles (45.2%), 24.1 titles/s, ETA 63.7 min, failed 0
+[build_kb 00:18:18] progress 76974/168139 titles (45.8%), 24.1 titles/s, ETA 62.9 min, failed 0
+[build_kb 00:18:57] progress 77974/168139 titles (46.4%), 24.2 titles/s, ETA 62.2 min, failed 0
+[build_kb 00:19:35] progress 78966/168139 titles (47.0%), 24.2 titles/s, ETA 61.5 min, failed 0
+[build_kb 00:20:14] progress 79966/168139 titles (47.6%), 24.2 titles/s, ETA 60.7 min, failed 0
+[build_kb 00:20:53] progress 80966/168139 titles (48.2%), 24.2 titles/s, ETA 60.0 min, failed 0
+[build_kb 00:21:32] progress 81966/168139 titles (48.7%), 24.2 titles/s, ETA 59.3 min, failed 0
+[build_kb 00:22:13] progress 82966/168139 titles (49.3%), 24.2 titles/s, ETA 58.6 min, failed 0
+[build_kb 00:22:59] progress 83966/168139 titles (49.9%), 24.2 titles/s, ETA 58.0 min, failed 0
+[build_kb 00:23:42] progress 84966/168139 titles (50.5%), 24.2 titles/s, ETA 57.3 min, failed 0
+[build_kb 00:24:24] progress 85966/168139 titles (51.1%), 24.2 titles/s, ETA 56.6 min, failed 0
+[build_kb 00:25:04] progress 86966/168139 titles (51.7%), 24.2 titles/s, ETA 55.9 min, failed 0
+[build_kb 00:25:53] progress 87966/168139 titles (52.3%), 24.1 titles/s, ETA 55.3 min, failed 0
+[build_kb 00:26:35] progress 88966/168139 titles (52.9%), 24.1 titles/s, ETA 54.7 min, failed 0
+[build_kb 00:27:17] progress 89966/168139 titles (53.5%), 24.1 titles/s, ETA 54.0 min, failed 0
+[build_kb 00:28:00] progress 90966/168139 titles (54.1%), 24.1 titles/s, ETA 53.3 min, failed 0
+[build_kb 00:28:38] progress 91966/168139 titles (54.7%), 24.1 titles/s, ETA 52.6 min, failed 0
+[build_kb 00:29:19] progress 92966/168139 titles (55.3%), 24.1 titles/s, ETA 51.9 min, failed 0
+[build_kb 00:30:02] progress 93966/168139 titles (55.9%), 24.1 titles/s, ETA 51.2 min, failed 0
+[build_kb 00:30:41] progress 94966/168139 titles (56.5%), 24.2 titles/s, ETA 50.5 min, failed 0
+[build_kb 00:31:26] progress 95966/168139 titles (57.1%), 24.1 titles/s, ETA 49.8 min, failed 0
+[build_kb 00:32:07] progress 96966/168139 titles (57.7%), 24.1 titles/s, ETA 49.2 min, failed 0
+[build_kb 00:32:50] progress 97948/168139 titles (58.3%), 24.1 titles/s, ETA 48.5 min, failed 0
+[build_kb 00:33:32] progress 98948/168139 titles (58.8%), 24.1 titles/s, ETA 47.8 min, failed 0
+[build_kb 00:34:17] progress 99948/168139 titles (59.4%), 24.1 titles/s, ETA 47.2 min, failed 0
+[build_kb 00:34:56] progress 100948/168139 titles (60.0%), 24.1 titles/s, ETA 46.4 min, failed 0
+[build_kb 00:35:44] progress 101948/168139 titles (60.6%), 24.1 titles/s, ETA 45.8 min, failed 0
+[build_kb 00:36:24] progress 102948/168139 titles (61.2%), 24.1 titles/s, ETA 45.1 min, failed 0
+[build_kb 00:37:06] progress 103948/168139 titles (61.8%), 24.1 titles/s, ETA 44.4 min, failed 0
+[build_kb 00:37:53] progress 104948/168139 titles (62.4%), 24.1 titles/s, ETA 43.8 min, failed 0
+[build_kb 00:38:40] progress 105948/168139 titles (63.0%), 24.0 titles/s, ETA 43.1 min, failed 0
+[build_kb 00:39:25] progress 106948/168139 titles (63.6%), 24.0 titles/s, ETA 42.5 min, failed 0
+[build_kb 00:40:11] progress 107948/168139 titles (64.2%), 24.0 titles/s, ETA 41.8 min, failed 0
+[build_kb 00:40:53] progress 108948/168139 titles (64.8%), 24.0 titles/s, ETA 41.1 min, failed 0
+[build_kb 00:41:36] progress 109948/168139 titles (65.4%), 24.0 titles/s, ETA 40.5 min, failed 0
+[build_kb 00:42:22] progress 110948/168139 titles (66.0%), 23.9 titles/s, ETA 39.8 min, failed 0
+[build_kb 00:43:03] progress 111948/168139 titles (66.6%), 24.0 titles/s, ETA 39.1 min, failed 0
+[build_kb 00:43:49] progress 112948/168139 titles (67.2%), 23.9 titles/s, ETA 38.4 min, failed 0
+[build_kb 00:44:32] progress 113941/168139 titles (67.8%), 23.9 titles/s, ETA 37.8 min, failed 0
+[build_kb 00:45:13] progress 114941/168139 titles (68.4%), 23.9 titles/s, ETA 37.1 min, failed 0
+[build_kb 00:45:54] progress 115941/168139 titles (69.0%), 23.9 titles/s, ETA 36.4 min, failed 0
+[build_kb 00:46:34] progress 116941/168139 titles (69.6%), 23.9 titles/s, ETA 35.6 min, failed 0
+[build_kb 00:47:18] progress 117941/168139 titles (70.1%), 23.9 titles/s, ETA 35.0 min, failed 0
+[build_kb 00:47:57] progress 118941/168139 titles (70.7%), 23.9 titles/s, ETA 34.2 min, failed 0
+[build_kb 00:48:46] progress 119941/168139 titles (71.3%), 23.9 titles/s, ETA 33.6 min, failed 0
+[build_kb 00:49:29] progress 120941/168139 titles (71.9%), 23.9 titles/s, ETA 32.9 min, failed 0
+[build_kb 00:50:11] progress 121941/168139 titles (72.5%), 23.9 titles/s, ETA 32.2 min, failed 0
+[build_kb 00:50:51] progress 122941/168139 titles (73.1%), 23.9 titles/s, ETA 31.5 min, failed 0
+[build_kb 00:51:31] progress 123941/168139 titles (73.7%), 23.9 titles/s, ETA 30.8 min, failed 0
+[build_kb 00:52:15] progress 124941/168139 titles (74.3%), 23.9 titles/s, ETA 30.1 min, failed 0
+[build_kb 00:52:55] progress 125941/168139 titles (74.9%), 23.9 titles/s, ETA 29.4 min, failed 0
+[build_kb 00:53:35] progress 126941/168139 titles (75.5%), 23.9 titles/s, ETA 28.7 min, failed 0
+[build_kb 00:54:14] progress 127941/168139 titles (76.1%), 23.9 titles/s, ETA 28.0 min, failed 0
+[build_kb 00:56:32] progress 128925/168139 titles (76.7%), 23.5 titles/s, ETA 27.8 min, failed 0
+[build_kb 00:58:52] progress 129925/168139 titles (77.3%), 23.1 titles/s, ETA 27.6 min, failed 0
+[build_kb 01:00:42] progress 130925/168139 titles (77.9%), 22.8 titles/s, ETA 27.2 min, failed 0
+[build_kb 01:02:36] progress 131925/168139 titles (78.5%), 22.6 titles/s, ETA 26.7 min, failed 0
+[build_kb 01:04:38] progress 132925/168139 titles (79.1%), 22.3 titles/s, ETA 26.4 min, failed 0
+[build_kb 01:07:12] progress 133925/168139 titles (79.7%), 21.9 titles/s, ETA 26.1 min, failed 0
+[build_kb 01:09:19] progress 134925/168139 titles (80.2%), 21.6 titles/s, ETA 25.6 min, failed 0
+[build_kb 01:11:12] progress 135925/168139 titles (80.8%), 21.4 titles/s, ETA 25.1 min, failed 0
+[build_kb 01:13:47] progress 136925/168139 titles (81.4%), 21.0 titles/s, ETA 24.8 min, failed 0
+[build_kb 01:15:44] progress 137925/168139 titles (82.0%), 20.8 titles/s, ETA 24.2 min, failed 0
+[build_kb 01:17:42] progress 138925/168139 titles (82.6%), 20.6 titles/s, ETA 23.7 min, failed 0
+[build_kb 01:19:37] progress 139925/168139 titles (83.2%), 20.4 titles/s, ETA 23.1 min, failed 0
+[build_kb 01:21:28] progress 140925/168139 titles (83.8%), 20.2 titles/s, ETA 22.5 min, failed 0
+[build_kb 01:23:41] progress 141925/168139 titles (84.4%), 20.0 titles/s, ETA 21.9 min, failed 0
+[build_kb 01:25:31] progress 142925/168139 titles (85.0%), 19.8 titles/s, ETA 21.2 min, failed 0
+[build_kb 01:26:50] progress 143907/168139 titles (85.6%), 19.7 titles/s, ETA 20.5 min, failed 0
+[build_kb 01:27:50] progress 144907/168139 titles (86.2%), 19.7 titles/s, ETA 19.7 min, failed 0
+[build_kb 01:28:54] progress 145907/168139 titles (86.8%), 19.7 titles/s, ETA 18.9 min, failed 0
+[build_kb 01:29:58] progress 146907/168139 titles (87.4%), 19.6 titles/s, ETA 18.0 min, failed 0
+[build_kb 01:31:09] progress 147907/168139 titles (88.0%), 19.6 titles/s, ETA 17.2 min, failed 0
+[build_kb 01:32:12] progress 148907/168139 titles (88.6%), 19.5 titles/s, ETA 16.4 min, failed 0
+[build_kb 01:33:22] progress 149907/168139 titles (89.2%), 19.5 titles/s, ETA 15.6 min, failed 0
+[build_kb 01:34:22] progress 150907/168139 titles (89.8%), 19.5 titles/s, ETA 14.8 min, failed 0
+[build_kb 01:35:22] progress 151907/168139 titles (90.3%), 19.4 titles/s, ETA 13.9 min, failed 0
+[build_kb 01:36:30] progress 152907/168139 titles (90.9%), 19.4 titles/s, ETA 13.1 min, failed 0
+[build_kb 01:37:38] progress 153907/168139 titles (91.5%), 19.4 titles/s, ETA 12.3 min, failed 0
+[build_kb 01:38:42] progress 154907/168139 titles (92.1%), 19.3 titles/s, ETA 11.4 min, failed 0
+[build_kb 01:39:47] progress 155907/168139 titles (92.7%), 19.3 titles/s, ETA 10.6 min, failed 0
+[build_kb 01:40:48] progress 156907/168139 titles (93.3%), 19.3 titles/s, ETA 9.7 min, failed 0
+[build_kb 01:41:53] progress 157889/168139 titles (93.9%), 19.2 titles/s, ETA 8.9 min, failed 0
+[build_kb 01:42:20] progress 158889/168139 titles (94.5%), 19.3 titles/s, ETA 8.0 min, failed 0
+[build_kb 01:42:39] progress 159889/168139 titles (95.1%), 19.4 titles/s, ETA 7.1 min, failed 0
+[build_kb 01:42:56] progress 160889/168139 titles (95.7%), 19.5 titles/s, ETA 6.2 min, failed 0
+[build_kb 01:43:13] progress 161889/168139 titles (96.3%), 19.5 titles/s, ETA 5.3 min, failed 0
+[build_kb 01:43:32] progress 162889/168139 titles (96.9%), 19.6 titles/s, ETA 4.5 min, failed 0
+[build_kb 01:43:50] progress 163889/168139 titles (97.5%), 19.7 titles/s, ETA 3.6 min, failed 0
+[build_kb 01:44:07] progress 164889/168139 titles (98.1%), 19.8 titles/s, ETA 2.7 min, failed 0
+[build_kb 01:44:25] progress 165889/168139 titles (98.7%), 19.9 titles/s, ETA 1.9 min, failed 0
+[build_kb 01:44:43] progress 166889/168139 titles (99.3%), 19.9 titles/s, ETA 1.0 min, failed 0
+[build_kb 01:45:01] progress 167889/168139 titles (99.9%), 20.0 titles/s, ETA 0.2 min, failed 0
+[build_kb 01:45:05] progress 168139/168139 titles (100.0%), 20.0 titles/s, ETA 0.0 min, failed 0
+[build_kb 01:45:05] EN-English: 17543/20440 mentions matched a Wikipedia page
+[build_kb 01:45:05] BN-Bangla: 4256/5997 mentions matched a Wikipedia page
+[build_kb 01:45:05] HI-Hindi: 4141/5138 mentions matched a Wikipedia page
+[build_kb 01:45:05] DE-German: 7347/11413 mentions matched a Wikipedia page
+[build_kb 01:45:05] ES-Spanish: 13707/16886 mentions matched a Wikipedia page
+[build_kb 01:45:05] FR-French: 14407/18832 mentions matched a Wikipedia page
+[build_kb 01:45:06] IT-Italian: 13928/18782 mentions matched a Wikipedia page
+[build_kb 01:45:06] PT-Portuguese: 11850/15673 mentions matched a Wikipedia page
+[build_kb 01:45:06] SV-Swedish: 11865/14864 mentions matched a Wikipedia page
+[build_kb 01:45:06] UK-Ukrainian: 7874/15282 mentions matched a Wikipedia page
+[build_kb 01:45:06] FA-Farsi: 13004/14602 mentions matched a Wikipedia page
+[build_kb 01:45:06] ZH-Chinese: 6620/10230 mentions matched a Wikipedia page
+[build_kb 01:45:08] Saved 168139 entries to kb_index/entries.json

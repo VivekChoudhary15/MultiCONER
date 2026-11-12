@@ -43,21 +43,13 @@ def predict_split(
 
     # Attach retrieved context to sentences (Stage A1).
     if retriever is not None:
-        ctx_sentences: List[Sentence] = []
-        for sent in sentences:
-            query = " ".join(sent.tokens)
-            entries = retriever.retrieve(
-                query,
-                language=language,
-                top_k=5,
-                threshold=0.0,
-            )
-            ctx = Retriever.context_string(entries)
-            if ctx:
-                ctx_sentences.append(replace(sent, context=ctx))
-            else:
-                ctx_sentences.append(sent)
-        sentences = ctx_sentences
+        sentences = retriever.attach_context(
+            list(sentences),
+            language=language,
+            top_k=5,
+            threshold=0.0,
+            max_tokens=context_max_tokens,
+        )
 
     dataset = NERDataset(
         sentences,
