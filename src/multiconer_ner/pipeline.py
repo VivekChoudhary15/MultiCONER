@@ -34,7 +34,7 @@ from .evaluate import evaluate_predictions, print_report, save_metrics
 from .inference import predict_split, save_conll_predictions, save_predictions_json
 from .kb import KBIndex
 from .model import MultilingualNER
-from .retriever import Retriever
+from .retriever import Retriever, sentence_mentions
 from .trainer import Trainer
 
 logger = logging.getLogger("multiconer_ner")
@@ -156,7 +156,12 @@ def run_pipeline(config: Config) -> dict:
             logger.info(
                 f"[A1] Building KB index at {kb_dir} (languages: {languages})"
             )
-            from multiconer_ner.scripts.build_kb import build_kb_index
+            # scripts/build_kb.py is not part of the package.
+            import sys
+            from .config import project_root
+
+            sys.path.insert(0, str(project_root() / "scripts"))
+            from build_kb import build_kb_index
 
             kb = build_kb_index(
                 languages=languages,
@@ -182,19 +187,38 @@ def run_pipeline(config: Config) -> dict:
                 import time
 
                 t0 = time.time()
-                split_dict[lang] = retriever.attach_context(
-                    split_dict[lang],
-                    language=lang,
+                filter_kwargs = dict(
                     top_k=data_cfg.retrieval_top_k,
                     min_score=data_cfg.retrieval_min_score,
                     max_entries=data_cfg.max_context_entries,
                     max_tokens=data_cfg.context_max_tokens,
                     skip_low_confidence=data_cfg.skip_low_confidence,
                 )
-                n_ctx = sum(1 for s in split_dict[lang] if s.context)
+                kfold = split_name == "train" and data_cfg.kb_train_folds > 1
+                if kfold:
+                    # Leakage-free: train sentences only see KB entries of
+                    # mentions that occur in other folds (see Retriever).
+                    split_dict[lang] = retriever.attach_context_kfold(
+                        split_dict[lang], language=lang,
+                        n_folds=data_cfg.kb_train_folds, seed=config.train.seed,
+                        **filter_kwargs,
+                    )
+                else:
+                    split_dict[lang] = retriever.attach_context(
+                        split_dict[lang], language=lang, **filter_kwargs
+                    )
+                with_ctx = [s for s in split_dict[lang] if s.context]
+                # Diagnostic: how often the context names one of the
+                # sentence's own gold entities (train should resemble test).
+                n_own = sum(
+                    1 for s in with_ctx
+                    if any(f"[KB] {m}:" in s.context for m in sentence_mentions(s))
+                )
                 logger.info(
-                    f"[A1+A2] {lang}/{split_name}: context attached to "
-                    f"{n_ctx}/{len(split_dict[lang])} sentences "
+                    f"[A1+A2{'+kfold' if kfold else ''}] {lang}/{split_name}: context attached to "
+                    f"{len(with_ctx)}/{len(split_dict[lang])} sentences; "
+                    f"context names an own gold entity in "
+                    f"{100 * n_own / max(len(with_ctx), 1):.1f}% of them "
                     f"({time.time() - t0:.1f}s)"
                 )
 

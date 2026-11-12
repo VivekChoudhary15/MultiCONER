@@ -1,35 +1,43 @@
 #!/usr/bin/env bash
-# Start run_all.sh in the background, detached from this terminal: it keeps
+# Start a runner script in the background, detached from this terminal: it keeps
 # running if you close the terminal, VS Code, or the SSH session.
 #
 # Usage:
-#   WIKI_CONTACT="you@example.org" ./start_all_bg.sh     # recommended (200 req/min to Wikipedia)
-#   ./start_all_bg.sh                                    # works, but KB build is ~20x slower
-#   SKIP="2_a0_en" WIKI_CONTACT=... ./start_all_bg.sh    # skip steps (names: 1_build_kb 2_a0_en 3_a1_en 4_a1_multi)
+#   RUNNER=run_a2.sh ./start_all_bg.sh                   # A2: filtered + K-fold retrieval (EN, then multi)
+#   WIKI_CONTACT="you@example.org" ./start_all_bg.sh     # default RUNNER=run_all.sh (KB build + A0 + A1)
+#   SKIP="1_a2_en" RUNNER=run_a2.sh ./start_all_bg.sh    # skip steps by name
 #
-# Monitor:  tail -f logs/run_all_latest/master.log         (overall progress)
-#           tail -f logs/run_all_latest/<step>.log         (full output of one step)
-# Stop:     kill -- -$(cat logs/run_all.pid)               (stops the whole run incl. python)
+# Logs go to logs/<runner>_<timestamp>/ and logs/<runner>_latest points to the newest:
+#   tail -f logs/run_a2_latest/master.log      (overall progress + F1 of each step)
+#   tail -f logs/run_a2_latest/<step>.log      (full output of one step)
+# Stop:  kill -- -$(cat logs/<runner>.pid)     (stops the whole run incl. python)
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
-PIDF=logs/run_all.pid
+RUNNER="${RUNNER:-run_all.sh}"
+[[ -f "$RUNNER" ]] || { echo "No such runner: $RUNNER"; exit 1; }
+NAME="$(basename "$RUNNER" .sh)"
+
 mkdir -p logs
-if [[ -f "$PIDF" ]] && kill -0 "$(cat "$PIDF")" 2>/dev/null; then
-  echo "A run is already active (PID $(cat "$PIDF")). Stop it first: kill -- -\$(cat $PIDF)"
-  exit 1
-fi
+for pidf in logs/*.pid; do   # one GPU job at a time
+  [[ -f "$pidf" ]] && kill -0 "$(cat "$pidf")" 2>/dev/null && {
+    echo "A run is already active: $pidf (PID $(cat "$pidf")). Stop it first: kill -- -\$(cat $pidf)"
+    exit 1; }
+done
+PIDF="logs/${NAME}.pid"
 
-export RUN_DIR="logs/run_all_$(date +%Y%m%d_%H%M%S)"
+export RUN_DIR="logs/${NAME}_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RUN_DIR"
-ln -sfn "$(basename "$RUN_DIR")" logs/run_all_latest
+ln -sfn "$(basename "$RUN_DIR")" "logs/${NAME}_latest"
 
-setsid nohup bash ./run_all.sh > "$RUN_DIR/master.log" 2>&1 < /dev/null &
+setsid nohup bash "./$RUNNER" > "$RUN_DIR/master.log" 2>&1 < /dev/null &
 echo $! > "$PIDF"
 
-echo "Started full run (PID $(cat "$PIDF")), logs in $RUN_DIR/"
-echo "  overall : tail -f logs/run_all_latest/master.log"
-echo "  steps   : ls logs/run_all_latest/   (1_build_kb.log 2_a0_en.log 3_a1_en.log 4_a1_multi.log)"
+echo "Started $RUNNER (PID $(cat "$PIDF")), logs in $RUN_DIR/"
+echo "  overall : tail -f logs/${NAME}_latest/master.log"
+echo "  steps   : ls logs/${NAME}_latest/"
 echo "  stop    : kill -- -\$(cat $PIDF)"
-[[ -z "${WIKI_CONTACT:-}" ]] && echo "  note    : WIKI_CONTACT not set -> Wikipedia allows only ~10 req/min; KB build will take ~20 h"
+if [[ "$NAME" == "run_all" && -z "${WIKI_CONTACT:-}" ]]; then
+  echo "  note    : WIKI_CONTACT not set -> Wikipedia allows only ~10 req/min; KB build will take ~20 h"
+fi
 exit 0

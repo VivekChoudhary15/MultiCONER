@@ -1,0 +1,22 @@
+[2026-11-12 16:23:37] Run directory: logs/run_a2_20261112_162337   (PID 154903)   min_score=1.0 max_entries=3 folds=5
+[2026-11-12 16:23:37] START 1_a2_en  ->  logs/run_a2_20261112_162337/1_a2_en.log
+[2026-11-12 17:01:12] DONE  1_a2_en  (37 min)
+        2026-11-12 16:59:00,654 | INFO | multiconer_ner | EN-English test -> precision=0.6347 recall=0.6285 f1=0.6316
+        2026-11-12 17:01:11,353 | INFO | multiconer_ner | POOLED test -> precision=0.6347 recall=0.6285 f1=0.6316
+[2026-11-12 17:01:12] START 2_a2_multi  ->  logs/run_a2_20261112_162337/2_a2_multi.log
+[2026-11-13 00:40:17] DONE  2_a2_multi  (459 min)
+        2026-11-12 22:04:01,891 | INFO | multiconer_ner | BN-Bangla test -> precision=0.7372 recall=0.7402 f1=0.7387
+        2026-11-12 22:05:33,064 | INFO | multiconer_ner | DE-German test -> precision=0.7080 recall=0.7147 f1=0.7113
+        2026-11-12 22:22:20,536 | INFO | multiconer_ner | EN-English test -> precision=0.6794 recall=0.6739 f1=0.6766
+        2026-11-12 22:39:03,745 | INFO | multiconer_ner | ES-Spanish test -> precision=0.7045 recall=0.6984 f1=0.7014
+        2026-11-12 22:55:18,855 | INFO | multiconer_ner | FA-Farsi test -> precision=0.6564 recall=0.6583 f1=0.6574
+        2026-11-12 23:12:48,566 | INFO | multiconer_ner | FR-French test -> precision=0.7004 recall=0.7009 f1=0.7007
+        2026-11-12 23:14:07,756 | INFO | multiconer_ner | HI-Hindi test -> precision=0.7688 recall=0.7740 f1=0.7714
+        2026-11-12 23:31:36,195 | INFO | multiconer_ner | IT-Italian test -> precision=0.7539 recall=0.7510 f1=0.7525
+        2026-11-12 23:47:29,396 | INFO | multiconer_ner | PT-Portuguese test -> precision=0.7244 recall=0.7173 f1=0.7208
+        2026-11-13 00:03:57,458 | INFO | multiconer_ner | SV-Swedish test -> precision=0.7530 recall=0.7571 f1=0.7550
+        2026-11-13 00:23:34,113 | INFO | multiconer_ner | UK-Ukrainian test -> precision=0.7242 recall=0.7156 f1=0.7199
+        2026-11-13 00:25:27,773 | INFO | multiconer_ner | ZH-Chinese test -> precision=0.5000 recall=0.5029 f1=0.5014
+        2026-11-13 00:40:12,871 | INFO | multiconer_ner | POOLED test -> precision=0.7135 recall=0.7107 f1=0.7121
+[2026-11-13 00:40:17] ALL FINISHED. exit codes: a2_en=0 a2_multi=0
+[2026-11-13 00:40:17] Models: models/{a2_en_kfold,a2_multi_kfold}  Predictions: outputs/<same>  TensorBoard: runs/

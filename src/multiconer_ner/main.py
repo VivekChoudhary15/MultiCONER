@@ -124,6 +124,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["threshold", "adaptive", "none"],
         help="Context filtering mode (Stage A2).",
     )
+    parser.add_argument(
+        "--kb-train-folds", type=int, default=0,
+        help="Leakage-free retrieval for TRAIN sentences: split train into K folds; "
+             "a sentence only retrieves KB entries of mentions seen in other folds "
+             "(0 = off, plain retrieval as in A1/A2). Dev/test always use the full KB.",
+    )
     return parser
 
 
@@ -165,6 +171,7 @@ def main() -> None:
     config.data.max_context_entries = args.max_context_entries
     config.data.skip_low_confidence = args.skip_low_confidence
     config.data.context_filter_mode = args.context_filter_mode
+    config.data.kb_train_folds = args.kb_train_folds
 
     run_pipeline(config)
 

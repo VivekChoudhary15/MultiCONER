@@ -52,6 +52,8 @@ class DataConfig:
     max_context_entries: int = 3              # Max KB entries injected per sentence
     skip_low_confidence: bool = True          # Skip context entirely when below threshold
     context_filter_mode: str = "threshold"    # "threshold" | "adaptive" | "none"
+    # Leakage-free training context: K-fold KB for train sentences (0/1 = off).
+    kb_train_folds: int = 0
 
 
 @dataclass
