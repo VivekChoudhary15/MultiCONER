@@ -36,7 +36,6 @@ from .model import (
     COARSE_LABEL2ID,
     FINE_TO_COARSE,
     MultilingualNER,
-    fine_to_coarse_labels,
 )
 
 
@@ -69,7 +68,8 @@ class Trainer:
         self.noise_training = bool(self.data_cfg.noise_training)
         self.noise_rate = self.data_cfg.noise_rate
         self.lambda_coarse = self.data_cfg.noise_lambda_coarse
-        self.lambda_context = self.data_cfg.noise_lambda_context
+        # The extra token-level CE belongs to A3 only, so baseline runs are unchanged.
+        self.lambda_context = self.data_cfg.noise_lambda_context if self.noise_training else 0.0
         self.lambda_kl = self.data_cfg.noise_lambda_kl
         self.coarse_head = self.model.coarse_head is not None
 
@@ -135,30 +135,41 @@ class Trainer:
             for k, v in batch.items()
         }
 
-    def _prepare_a3_batch(self, batch: dict) -> dict:
-        """Add coarse_labels and no_context_mask to a batch for A3 training."""
-        if not self.noise_training:
-            return batch
-
-        batch = dict(batch)  # shallow copy
-
-        # Convert fine labels -> coarse labels for the coarse head.
-        if self._fine_to_coarse_tensor is not None and "labels" in batch:
-            fine_labels = batch["labels"]
-            coarse_labels = self._fine_to_coarse_tensor[fine_labels.view(-1)].view_as(fine_labels)
+    def _a3_forward(self, input_ids, attention_mask, labels) -> tuple:
+        """Forward pass plus the weighted A3 auxiliary losses for one view."""
+        coarse_labels = None
+        if self._fine_to_coarse_tensor is not None:
             coarse_labels = torch.where(
-                fine_labels == -100,
-                torch.tensor(-100, device=self.device),
-                coarse_labels,
+                labels == -100,
+                torch.full_like(labels, -100),
+                self._fine_to_coarse_tensor[labels.clamp(min=0)],
             )
-            batch["coarse_labels"] = coarse_labels
+        out = self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=labels,
+            coarse_labels=coarse_labels,
+            # Extra token-level CE on the sentence words, alongside the CRF loss.
+            no_context_mask=(labels != -100) if self.lambda_context > 0 else None,
+        )
+        loss = out["loss"]
+        if loss is not None:
+            loss = (
+                loss
+                + self.lambda_coarse * out["loss_coarse"]
+                + self.lambda_context * out["loss_no_context"]
+            )
+        return out, loss
 
-        # no_context_mask: True for real sentence words (not context, not padding/special).
-        if "context_mask" in batch and "labels" in batch:
-            no_context_mask = (~batch["context_mask"].bool()) & (batch["labels"] != -100)
-            batch["no_context_mask"] = no_context_mask
-
-        return batch
+    @staticmethod
+    def _aligned_word_logits(clean_logits, clean_labels, noisy_logits, noisy_labels):
+        """First-subword logits of the same words in both views. The noisy
+        view splits words into different subwords, so align by word order."""
+        mc, mn = clean_labels != -100, noisy_labels != -100
+        n = torch.minimum(mc.sum(1), mn.sum(1)).unsqueeze(1)
+        keep_c = mc & (mc.cumsum(1) <= n)
+        keep_n = mn & (mn.cumsum(1) <= n)
+        return clean_logits[keep_c], noisy_logits[keep_n]
 
     def _train_epoch(self) -> float:
         self.model.train()
@@ -168,71 +179,34 @@ class Trainer:
         pbar = tqdm(self.train_loader, desc="train", leave=False)
         for batch in pbar:
             batch = self._move_batch(batch)
-            batch = self._prepare_a3_batch(batch)
             self.optimizer.zero_grad(set_to_none=True)
 
             with self._autocast():
-                # --- Clean forward pass ---
-                out = self.model(
-                    input_ids=batch["input_ids"],
-                    attention_mask=batch["attention_mask"],
-                    labels=batch["labels"],
-                    coarse_labels=batch.get("coarse_labels"),
-                    no_context_mask=batch.get("no_context_mask"),
+                out, loss = self._a3_forward(
+                    batch["input_ids"], batch["attention_mask"], batch["labels"]
                 )
-                loss = out["loss"]
+                kl_loss = torch.tensor(0.0, device=self.device)
 
-                # --- Stage A3: Noisy forward pass + KL divergence ---
+                # Stage A3: noisy view + KL(clean || noisy) on word-level emissions.
                 if self.noise_training and "noisy_input_ids" in batch:
-                    noisy_batch = {
-                        "input_ids": batch["noisy_input_ids"],
-                        "attention_mask": batch["noisy_attention_mask"],
-                        "labels": batch["noisy_labels"],
-                        "coarse_labels": batch.get("noisy_coarse_labels"),
-                        "no_context_mask": batch.get("noisy_no_context_mask"),
-                    }
-                    noisy_batch = self._prepare_a3_batch(noisy_batch)
-                    out_noisy = self.model(
-                        input_ids=noisy_batch["input_ids"],
-                        attention_mask=noisy_batch["attention_mask"],
-                        labels=noisy_batch["labels"],
-                        coarse_labels=noisy_batch.get("coarse_labels"),
-                        no_context_mask=noisy_batch.get("no_context_mask"),
+                    out_noisy, loss_noisy = self._a3_forward(
+                        batch["noisy_input_ids"],
+                        batch["noisy_attention_mask"],
+                        batch["noisy_labels"],
                     )
-                    loss_noisy = out_noisy["loss"]
-
-                    # KL divergence: make predictions invariant to noise.
-                    # Compute on valid (non -100) positions only.
-                    clean_logits = out["logits"].float()
-                    noisy_logits = out_noisy["logits"].float()
-                    mask = batch["attention_mask"].view(-1).bool()
-                    valid_labels = batch["labels"].view(-1) != -100
-                    valid = mask & valid_labels
-
-                    if valid.any():
-                        clean_probs = F.softmax(
-                            clean_logits.view(-1, self.model.num_labels)[valid], dim=-1
-                        )
-                        noisy_probs = F.softmax(
-                            noisy_logits.view(-1, self.model.num_labels)[valid], dim=-1
-                        )
+                    clean_w, noisy_w = self._aligned_word_logits(
+                        out["logits"].float(), batch["labels"],
+                        out_noisy["logits"].float(), batch["noisy_labels"],
+                    )
+                    if clean_w.numel():
                         kl_loss = F.kl_div(
-                            noisy_probs.log(), clean_probs, reduction="batchmean"
+                            F.log_softmax(noisy_w, dim=-1),
+                            F.log_softmax(clean_w.detach(), dim=-1),
+                            log_target=True,
+                            reduction="batchmean",
                         )
-                    else:
-                        kl_loss = torch.tensor(0.0, device=self.device)
-
-                    # Combine losses.
-                    loss = (
-                        loss
-                        + self.lambda_kl * kl_loss
-                        + self.lambda_coarse
-                        * out.get("loss_coarse", torch.tensor(0.0, device=self.device))
-                        + self.lambda_context
-                        * out.get("loss_no_context", torch.tensor(0.0, device=self.device))
-                    )
-                else:
-                    kl_loss = torch.tensor(0.0, device=self.device)
+                    if loss is not None and loss_noisy is not None:
+                        loss = loss + loss_noisy + self.lambda_kl * kl_loss
 
             if loss is None:
                 continue

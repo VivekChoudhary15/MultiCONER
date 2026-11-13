@@ -1,0 +1,30 @@
+[2026-11-13 16:24:18] Run directory: logs/run_a3_20261113_162418   (PID 5285)   min_score=1.0 max_entries=3 folds=5 noise=0.3/typo,swap,drop,insert
+[2026-11-13 16:24:18] START 1_a0_zh  ->  logs/run_a3_20261113_162418/1_a0_zh.log
+[2026-11-13 16:31:26] DONE  1_a0_zh  (7 min)
+        2026-11-13 16:31:23,897 | INFO | multiconer_ner | ZH-Chinese test -> precision=0.5521 recall=0.5478 f1=0.5499
+        2026-11-13 16:31:26,140 | INFO | multiconer_ner | POOLED test -> precision=0.5521 recall=0.5478 f1=0.5499
+[2026-11-13 16:31:26] START 2_a2_zh  ->  logs/run_a3_20261113_162418/2_a2_zh.log
+[2026-11-13 16:40:25] DONE  2_a2_zh  (8 min)
+        2026-11-13 16:40:22,408 | INFO | multiconer_ner | ZH-Chinese test -> precision=0.5420 recall=0.5406 f1=0.5413
+        2026-11-13 16:40:24,637 | INFO | multiconer_ner | POOLED test -> precision=0.5420 recall=0.5406 f1=0.5413
+[2026-11-13 16:40:25] START 3_a3_en  ->  logs/run_a3_20261113_162418/3_a3_en.log
+[2026-11-13 17:04:20] DONE  3_a3_en  (23 min)
+        2026-11-13 17:03:46,713 | INFO | multiconer_ner | EN-English test -> precision=0.6440 recall=0.6379 f1=0.6409
+        2026-11-13 17:04:19,163 | INFO | multiconer_ner | POOLED test -> precision=0.6440 recall=0.6379 f1=0.6409
+[2026-11-13 17:04:20] START 4_a3_multi  ->  logs/run_a3_20261113_162418/4_a3_multi.log
+[2026-11-13 21:30:28] DONE  4_a3_multi  (266 min)
+        2026-11-13 20:40:31,894 | INFO | multiconer_ner | BN-Bangla test -> precision=0.7465 recall=0.7435 f1=0.7450
+        2026-11-13 20:40:59,037 | INFO | multiconer_ner | DE-German test -> precision=0.7134 recall=0.7179 f1=0.7156
+        2026-11-13 20:46:32,394 | INFO | multiconer_ner | EN-English test -> precision=0.6913 recall=0.6841 f1=0.6877
+        2026-11-13 20:52:09,254 | INFO | multiconer_ner | ES-Spanish test -> precision=0.7151 recall=0.7067 f1=0.7109
+        2026-11-13 20:57:36,263 | INFO | multiconer_ner | FA-Farsi test -> precision=0.6687 recall=0.6482 f1=0.6583
+        2026-11-13 21:03:26,480 | INFO | multiconer_ner | FR-French test -> precision=0.7138 recall=0.7115 f1=0.7127
+        2026-11-13 21:03:53,229 | INFO | multiconer_ner | HI-Hindi test -> precision=0.7686 recall=0.7673 f1=0.7679
+        2026-11-13 21:09:26,533 | INFO | multiconer_ner | IT-Italian test -> precision=0.7648 recall=0.7606 f1=0.7627
+        2026-11-13 21:14:42,661 | INFO | multiconer_ner | PT-Portuguese test -> precision=0.7350 recall=0.7259 f1=0.7304
+        2026-11-13 21:20:01,981 | INFO | multiconer_ner | SV-Swedish test -> precision=0.7670 recall=0.7712 f1=0.7691
+        2026-11-13 21:26:01,883 | INFO | multiconer_ner | UK-Ukrainian test -> precision=0.7314 recall=0.7150 f1=0.7231
+        2026-11-13 21:26:33,773 | INFO | multiconer_ner | ZH-Chinese test -> precision=0.6155 recall=0.6213 f1=0.6184
+        2026-11-13 21:30:24,077 | INFO | multiconer_ner | POOLED test -> precision=0.7239 recall=0.7166 f1=0.7202
+[2026-11-13 21:30:28] ALL FINISHED. exit codes: a0_zh=0 a2_zh=0 a3_en=0 a3_multi=0
+[2026-11-13 21:30:28] Models: models/{a0_zh,a2_zh_fixed,a1a2a3_en,a1a2a3_multi}  Predictions: outputs/<same>  TensorBoard: runs/

@@ -8,32 +8,30 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from seqeval.metrics import (
-    classification_report,
-    f1_score,
-    precision_score,
-    recall_score,
-)
+from seqeval.metrics import classification_report
 from seqeval.scheme import IOB2
+
+
+def _format_report(report: dict, digits: int = 4) -> str:
+    rows = [(k, v) for k, v in report.items() if not k.endswith(" avg")]
+    avgs = [(k, v) for k, v in report.items() if k.endswith(" avg")]
+    width = max([len(k) for k, _ in report.items()] + [12])
+    head = f"{'':>{width}} {'precision':>9} {'recall':>9} {'f1-score':>9} {'support':>9}"
+    line = lambda k, v: (
+        f"{k:>{width}} {v['precision']:>9.{digits}f} {v['recall']:>9.{digits}f} "
+        f"{v['f1-score']:>9.{digits}f} {int(v['support']):>9}"
+    )
+    return "\n".join([head, ""] + [line(k, v) for k, v in rows] + [""] + [line(k, v) for k, v in avgs]) + "\n"
 
 
 def evaluate_predictions(
     true_tags: List[List[str]],
     pred_tags: List[List[str]],
 ) -> dict:
-    """Compute overall and per-entity-type precision/recall/F1 (seqeval)."""
+    """Compute overall and per-entity-type precision/recall/F1 (seqeval,
+    strict IOB2) with a single seqeval pass; overall = micro average."""
     assert len(true_tags) == len(pred_tags), (
         f"true ({len(true_tags)}) and pred ({len(pred_tags)}) sentence counts differ"
-    )
-
-    overall_precision = precision_score(
-        true_tags, pred_tags, scheme=IOB2, mode="strict"
-    )
-    overall_recall = recall_score(
-        true_tags, pred_tags, scheme=IOB2, mode="strict"
-    )
-    overall_f1 = f1_score(
-        true_tags, pred_tags, scheme=IOB2, mode="strict"
     )
 
     report = classification_report(
@@ -44,10 +42,11 @@ def evaluate_predictions(
         output_dict=True,
         zero_division=0,
     )
+    micro = report.get("micro avg", {"precision": 0.0, "recall": 0.0, "f1-score": 0.0})
 
     by_type: Dict[str, dict] = {}
     for entity_type, scores in report.items():
-        if entity_type in ("macro_avg", "micro_avg", "weighted_avg", "accuracy"):
+        if entity_type.endswith(" avg"):
             continue
         by_type[entity_type] = {
             "precision": float(scores.get("precision", 0.0)),
@@ -57,13 +56,11 @@ def evaluate_predictions(
         }
 
     return {
-        "overall_precision": float(overall_precision),
-        "overall_recall": float(overall_recall),
-        "overall_f1": float(overall_f1),
+        "overall_precision": float(micro["precision"]),
+        "overall_recall": float(micro["recall"]),
+        "overall_f1": float(micro["f1-score"]),
         "by_type": by_type,
-        "report": classification_report(
-            true_tags, pred_tags, scheme=IOB2, mode="strict", zero_division=0
-        ),
+        "report": _format_report(report) if by_type else "(no entities)\n",
     }
 
 

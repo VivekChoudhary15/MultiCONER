@@ -232,7 +232,7 @@ def run_pipeline(config: Config) -> dict:
             noise_rate=data_cfg.noise_rate,
             noise_types=data_cfg.noise_types,
             seed=config.train.seed,
-        )
+        ).fit([s for lang in languages for s in train_sentences_by_lang[lang]])
         logger.info(
             f"[A3] Noise-robust training enabled: rate={data_cfg.noise_rate}, "
             f"types={data_cfg.noise_types}, coarse_head={data_cfg.coarse_head}"
@@ -276,6 +276,7 @@ def run_pipeline(config: Config) -> dict:
         classifier_dropout=config.model.classifier_dropout,
         use_crf=config.model.use_crf,
         freeze_backbone=config.model.freeze_backbone,
+        coarse_head=data_cfg.coarse_head,
     )
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Using device: {device}")

@@ -22,60 +22,30 @@ from transformers import AutoModel, AutoConfig, PreTrainedTokenizerBase
 # Stage A3: Coarse-to-fine label mapping (67 fine -> 13 coarse tags)
 # --------------------------------------------------------------------------- #
 
-COARSE_LABELS: List[str] = [
-    "O",
-    "B-PER", "I-PER",      # Person
-    "B-LOC", "I-LOC",      # Location
-    "B-ORG", "I-ORG",      # Organization
-    "B-PROD", "I-PROD",    # Product
-    "B-EVT", "I-EVT",      # Event
-    "B-MISC", "I-MISC",    # Miscellaneous
-]
+# The six official MultiCoNER II coarse groups.
+COARSE_GROUPS: Dict[str, List[str]] = {
+    "LOC": ["Facility", "HumanSettlement", "Station", "OtherLOC"],
+    "CW": ["ArtWork", "MusicalWork", "Software", "VisualWork", "WrittenWork"],
+    "GRP": ["AerospaceManufacturer", "CarManufacturer", "MusicalGRP", "ORG",
+            "PrivateCorp", "PublicCorp", "SportsGRP"],
+    "PER": ["Artist", "Athlete", "Cleric", "Politician", "Scientist",
+            "SportsManager", "OtherPER"],
+    "PROD": ["Clothing", "Drink", "Food", "Vehicle", "OtherPROD"],
+    "MED": ["AnatomicalStructure", "Disease", "MedicalProcedure",
+            "Medication/Vaccine", "Symptom"],
+}
 
+COARSE_LABELS: List[str] = ["O"] + [
+    f"{p}-{g}" for g in COARSE_GROUPS for p in ("B", "I")
+]
 COARSE_LABEL2ID = {label: i for i, label in enumerate(COARSE_LABELS)}
 COARSE_ID2LABEL = {i: label for i, label in enumerate(COARSE_LABELS)}
 
-FINE_TO_COARSE = {
-    "O": "O",
-    # Person
-    "B-Artist": "B-PER", "I-Artist": "I-PER",
-    "B-Athlete": "B-PER", "I-Athlete": "I-PER",
-    "B-Politician": "B-PER", "I-Politician": "I-PER",
-    "B-Cleric": "B-PER", "I-Cleric": "I-PER",
-    "B-Scientist": "B-PER", "I-Scientist": "I-PER",
-    "B-OtherPER": "B-PER", "I-OtherPER": "I-PER",
-    # Location
-    "B-HumanSettlement": "B-LOC", "I-HumanSettlement": "I-LOC",
-    "B-OtherLOC": "B-LOC", "I-OtherLOC": "I-LOC",
-    "B-Facility": "B-LOC", "I-Facility": "I-LOC",
-    "B-Station": "B-LOC", "I-Station": "I-LOC",
-    # Organization
-    "B-ORG": "B-ORG", "I-ORG": "I-ORG",
-    "B-PublicCorp": "B-ORG", "I-PublicCorp": "I-ORG",
-    "B-PrivateCorp": "B-ORG", "I-PrivateCorp": "I-ORG",
-    "B-SportsGRP": "B-ORG", "I-SportsGRP": "I-ORG",
-    "B-MusicalGRP": "B-ORG", "I-MusicalGRP": "I-ORG",
-    # Product
-    "B-WrittenWork": "B-PROD", "I-WrittenWork": "I-PROD",
-    "B-VisualWork": "B-PROD", "I-VisualWork": "I-PROD",
-    "B-MusicalWork": "B-PROD", "I-MusicalWork": "I-PROD",
-    "B-ArtWork": "B-PROD", "I-ArtWork": "I-PROD",
-    "B-OtherPROD": "B-PROD", "I-OtherPROD": "I-PROD",
-    "B-Software": "B-PROD", "I-Software": "I-PROD",
-    "B-Vehicle": "B-PROD", "I-Vehicle": "I-PROD",
-    # Miscellaneous
-    "B-Disease": "B-MISC", "I-Disease": "I-MISC",
-    "B-Food": "B-MISC", "I-Food": "I-MISC",
-    "B-Drink": "B-MISC", "I-Drink": "I-MISC",
-    "B-Symptom": "B-MISC", "I-Symptom": "I-MISC",
-    "B-AnatomicalStructure": "B-MISC", "I-AnatomicalStructure": "I-MISC",
-    "B-MedicalProcedure": "B-MISC", "I-MedicalProcedure": "I-MISC",
-    "B-Medication/Vaccine": "B-MISC", "I-Medication/Vaccine": "I-MISC",
-    "B-AerospaceManufacturer": "B-MISC", "I-AerospaceManufacturer": "I-MISC",
-    "B-CarManufacturer": "B-MISC", "I-CarManufacturer": "I-MISC",
-    "B-SportsManager": "B-MISC", "I-SportsManager": "I-MISC",
-    "B-Clothing": "B-MISC", "I-Clothing": "I-MISC",
-}
+FINE_TO_COARSE: Dict[str, str] = {"O": "O"}
+for _group, _fine_types in COARSE_GROUPS.items():
+    for _fine in _fine_types:
+        for _p in ("B", "I"):
+            FINE_TO_COARSE[f"{_p}-{_fine}"] = f"{_p}-{_group}"
 
 
 def fine_to_coarse_labels(fine_labels: List[int], fine_id2label: Dict[int, str],
@@ -294,7 +264,8 @@ class MultilingualNER(nn.Module):
                         flat_logits_nc[valid], flat_labels_nc[valid]
                     )
 
-            loss = loss_fine + loss_coarse + loss_no_context
+            # Auxiliary terms are returned separately; the trainer weights them.
+            loss = loss_fine
             loss_terms = {
                 "loss_fine": loss_fine,
                 "loss_coarse": loss_coarse,

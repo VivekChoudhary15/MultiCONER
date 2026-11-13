@@ -1,0 +1,9 @@
+== a2_multi_kfold Fri Nov 13 16:13:10 IST 2026
+retrieval: {'top_k': 5, 'min_score': 1.0, 'max_entries': 3, 'max_tokens': 64, 'skip_low_confidence': True}
+ZH-Chinese: scored 20265/20265 sentences, F1 0.4236 (was 0.5014)  [31s]
+POOLED: F1 0.7094 (was 0.7121)
+== a1_multi_retrieval Fri Nov 13 16:18:37 IST 2026
+retrieval: {'top_k': 5, 'min_score': 0.0, 'max_entries': 5, 'max_tokens': 64, 'skip_low_confidence': False}
+ZH-Chinese: scored 20265/20265 sentences, F1 0.3988 (was 0.4592)  [32s]
+POOLED: F1 0.6508 (was 0.6531)
+== done Fri Nov 13 16:24:04 IST 2026

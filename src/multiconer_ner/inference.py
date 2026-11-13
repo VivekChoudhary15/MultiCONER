@@ -62,13 +62,17 @@ def predict_split(
         lowercase=lowercase,
         context_max_tokens=context_max_tokens,
     )
+    # Batch similar lengths together (longest first) so little compute is
+    # spent on padding; results are put back in the original order.
+    order = sorted(range(len(dataset)), key=lambda i: -len(dataset.examples[i]["input_ids"]))
     loader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=False,
+        dataset, batch_size=batch_size, sampler=order,
         collate_fn=make_collate_fn(tokenizer.pad_token_id),
     )
     id2label = model.id2label
 
-    results: List[Tuple[List[str], List[str], List[str]]] = []
+    results: List[Optional[Tuple[List[str], List[str], List[str]]]] = [None] * len(dataset)
+    pos = 0
     with torch.no_grad():
         for batch in loader:
             input_ids = batch["input_ids"].to(device)
@@ -82,7 +86,8 @@ def predict_split(
             for i in range(labels.shape[0]):
                 lab = labels[i].tolist()
                 true_seq = [id2label[l] for l in lab if l != -100]
-                results.append((None, true_seq, preds[i]))
+                results[order[pos]] = (None, true_seq, preds[i])
+                pos += 1
 
     # Attach raw tokens (dataset order matches sentences order). Sentences
     # longer than max_length were truncated, so trim tokens to match.
