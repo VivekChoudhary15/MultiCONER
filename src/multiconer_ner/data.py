@@ -20,6 +20,7 @@ from math import ceil
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, Sampler
 from transformers import PreTrainedTokenizerBase
@@ -384,6 +385,7 @@ def make_dataloaders(
     language_sampling_temperature: float = 1.0,
     seed: int = 42,
     context_max_tokens: int = 64,
+    noise_augmenter: Optional[NoiseAugmenter] = None,
 ) -> Tuple[DataLoader, DataLoader]:
     """Build train / val / test DataLoaders sharing one label space.
 
@@ -391,6 +393,9 @@ def make_dataloaders(
     language-balanced sampler so each language contributes equally to each
     epoch. The val loader is pooled. Test data is NOT tokenized here; it is
     encoded per language at prediction time (the test splits are huge).
+
+    If ``noise_augmenter`` is provided, the train dataset also returns noisy
+    copies of each sentence for Stage A3 noise-robust training.
     """
     collate = make_collate_fn(tokenizer.pad_token_id)
 
@@ -401,6 +406,7 @@ def make_dataloaders(
         max_length=data_config.max_length,
         lowercase=data_config.lowercase,
         context_max_tokens=context_max_tokens,
+        noise_augmenter=noise_augmenter,
     )
     val_ds = NERDataset(
         val_sentences,
@@ -469,3 +475,322 @@ def make_language_balanced_loader(
     pad_id = datasets[0].tokenizer.pad_token_id  # type: ignore[attr-defined]
     return DataLoader(concat, batch_size=batch_size, sampler=sampler, shuffle=False,
                       collate_fn=make_collate_fn(pad_id))
+
+
+# --------------------------------------------------------------------------- #
+# Stage A3: Noise-robust training
+# --------------------------------------------------------------------------- #
+
+class NoiseAugmenter:
+    """
+    Character-level noise augmentation for NER training.
+
+    Applies typo/swap/drop noise to tokens, adapted per script.
+    Preserves BIO tag alignment (corrupted tokens keep original tags).
+    """
+
+    def __init__(self, noise_rate: float = 0.3, noise_types: str = "typo,swap,drop",
+                 seed: int = 42):
+        self.noise_rate = noise_rate
+        self.noise_types = set(t.strip() for t in noise_types.split(",") if t.strip())
+        self.rng = np.random.RandomState(seed)
+
+        # Keyboard adjacency for Latin script (qwerty layout)
+        self.latin_adjacent = {
+            "q": "wet", "w": "qert", "e": "wrts", "r": "etyf", "t": "ryug",
+            "y": "tuih", "u": "yioh", "i": "uopk", "o": "ikpl", "p": "ol",
+            "a": "swz", "s": "azwsxd", "d": "sfcx", "f": "dgv", "g": "fhb",
+            "h": "gjn", "j": "hkn", "k": "jlm", "l": "km",
+            "z": "sax", "x": "zcd", "c": "xvf", "v": "cfg", "b": "vgh",
+            "n": "bhj", "m": "n",
+        }
+
+    def _is_latin(self, ch: str) -> bool:
+        return "a" <= ch <= "z" or "A" <= ch <= "Z"
+
+    def _is_cjk(self, ch: str) -> bool:
+        return "\u4e00" <= ch <= "\u9fff"
+
+    def _is_cyrillic(self, ch: str) -> bool:
+        return "\u0400" <= ch <= "\u04ff"
+
+    def _typo(self, token: str) -> str:
+        """Replace a character with an adjacent/similar one."""
+        if len(token) < 2:
+            return token
+        idx = self.rng.randint(len(token))
+        ch = token[idx]
+        if self._is_latin(ch):
+            ch_lower = ch.lower()
+            if ch_lower in self.latin_adjacent:
+                repl = self.rng.choice(list(self.latin_adjacent[ch_lower]))
+                repl = repl.upper() if ch.isupper() else repl
+                return token[:idx] + repl + token[idx + 1:]
+        # Fallback: random substitution
+        repl = chr(self.rng.randint(97, 123))
+        repl = repl.upper() if ch.isupper() else repl
+        return token[:idx] + repl + token[idx + 1:]
+
+    def _swap(self, token: str) -> str:
+        """Swap adjacent characters."""
+        if len(token) < 2:
+            return token
+        idx = self.rng.randint(len(token) - 1)
+        return token[:idx] + token[idx + 1] + token[idx] + token[idx + 2:]
+
+    def _drop(self, token: str) -> str:
+        """Drop a character."""
+        if len(token) < 2:
+            return token
+        idx = self.rng.randint(len(token))
+        return token[:idx] + token[idx + 1:]
+
+    def corrupt_token(self, token: str) -> str:
+        """Apply one noise type to a token."""
+        if not self.noise_types:
+            return token
+        noise_type = self.rng.choice(sorted(self.noise_types))
+        if noise_type == "typo":
+            return self._typo(token)
+        elif noise_type == "swap":
+            return self._swap(token)
+        elif noise_type == "drop":
+            return self._drop(token)
+        return token
+
+    def corrupt_sentence(self, tokens: List[str], tags: List[str]) -> List[str]:
+        """Corrupt tokens in a sentence, preserving BIO tag alignment.
+
+        Only non-'O' tokens are candidates for corruption (entity tokens are
+        the ones most affected by keyboard noise in the test set). Each token
+        is corrupted independently with probability ``noise_rate``.
+        """
+        noisy_tokens = []
+        for token, tag in zip(tokens, tags):
+            if tag == "O" or self.rng.random() > self.noise_rate:
+                noisy_tokens.append(token)
+            else:
+                noisy_tokens.append(self.corrupt_token(token))
+        return noisy_tokens
+
+
+# --------------------------------------------------------------------------- #
+# NERDataset with optional noise augmentation (Stage A3)
+# --------------------------------------------------------------------------- #
+
+class NERDataset(Dataset):
+    """Map-style dataset that aligns NER tags to subword token ids.
+
+    When ``noise_augmenter`` is provided, each item also returns noisy
+    ``input_ids``/``attention_mask``/``labels`` for Stage A3 noise-robust
+    training (dual forward pass: clean + noisy).
+    """
+
+    def __init__(
+        self,
+        sentences: Sequence[Sentence],
+        tokenizer: PreTrainedTokenizerBase,
+        label2id: Dict[str, int],
+        max_length: int = 256,
+        lowercase: bool = False,
+        context_max_tokens: int = 64,
+        noise_augmenter: Optional[NoiseAugmenter] = None,
+    ):
+        self.tokenizer = tokenizer
+        self.label2id = label2id
+        self.max_length = max_length
+        self.lowercase = lowercase
+        self.context_max_tokens = context_max_tokens
+        self.noise_augmenter = noise_augmenter
+        self.examples = self._encode(sentences)
+        # Keep references to sentences for on-the-fly noise generation
+        self._sentences = list(sentences)
+
+    def _encode(self, sentences: Sequence[Sentence]) -> List[dict]:
+        examples: List[dict] = []
+        for sent in sentences:
+            sentence_tokens = [
+                t.lower() if self.lowercase else t for t in sent.tokens
+            ]
+            all_tokens: List[str] = list(sentence_tokens)
+            all_labels: List[int] = [
+                self.label2id[t] for t in sent.tags
+            ]
+
+            if sent.context:
+                context_tokens = sent.context.split()
+                if len(context_tokens) > self.context_max_tokens:
+                    context_tokens = context_tokens[: self.context_max_tokens]
+                all_tokens = context_tokens + all_tokens
+                all_labels = [-100] * len(context_tokens) + all_labels
+
+            encoding = self.tokenizer(
+                all_tokens,
+                is_split_into_words=True,
+                truncation=True,
+                max_length=self.max_length,
+                padding=False,
+                return_tensors=None,
+            )
+
+            word_ids = encoding.word_ids()
+            labels: List[int] = []
+            context_mask: List[bool] = []
+            previous_word_idx: Optional[int] = None
+            n_context_tokens = len(context_tokens) if sent.context else 0
+            n_context_subwords = 0
+            for word_idx in word_ids:
+                if word_idx is None:
+                    labels.append(-100)
+                    context_mask.append(False)
+                elif word_idx != previous_word_idx:
+                    labels.append(all_labels[word_idx])
+                    # Context tokens are the first n_context_tokens words.
+                    context_mask.append(word_idx < n_context_tokens)
+                    if word_idx < n_context_tokens:
+                        n_context_subwords += 1
+                else:
+                    labels.append(-100)
+                    context_mask.append(False)
+                previous_word_idx = word_idx
+
+            examples.append(
+                {
+                    "input_ids": encoding["input_ids"],
+                    "attention_mask": encoding["attention_mask"],
+                    "labels": labels,
+                    "context_mask": context_mask,
+                    "language": sent.language,
+                    "split": sent.split,
+                }
+            )
+        return examples
+
+    def _encode_noisy(self, sent: Sentence) -> dict:
+        """Encode a noise-corrupted version of a sentence."""
+        noisy_tokens = self.noise_augmenter.corrupt_sentence(sent.tokens, sent.tags)
+        sentence_tokens = [
+            t.lower() if self.lowercase else t for t in noisy_tokens
+        ]
+        all_tokens: List[str] = list(sentence_tokens)
+        all_labels: List[int] = [
+            self.label2id[t] for t in sent.tags
+        ]
+
+        if sent.context:
+            context_tokens = sent.context.split()
+            if len(context_tokens) > self.context_max_tokens:
+                context_tokens = context_tokens[: self.context_max_tokens]
+            all_tokens = context_tokens + all_tokens
+            all_labels = [-100] * len(context_tokens) + all_labels
+
+        encoding = self.tokenizer(
+            all_tokens,
+            is_split_into_words=True,
+            truncation=True,
+            max_length=self.max_length,
+            padding=False,
+            return_tensors=None,
+        )
+
+        word_ids = encoding.word_ids()
+        labels: List[int] = []
+        context_mask: List[bool] = []
+        previous_word_idx: Optional[int] = None
+        n_context_tokens = len(context_tokens) if sent.context else 0
+        for word_idx in word_ids:
+            if word_idx is None:
+                labels.append(-100)
+                context_mask.append(False)
+            elif word_idx != previous_word_idx:
+                labels.append(all_labels[word_idx])
+                context_mask.append(word_idx < n_context_tokens)
+            else:
+                labels.append(-100)
+                context_mask.append(False)
+            previous_word_idx = word_idx
+
+        return {
+            "input_ids": encoding["input_ids"],
+            "attention_mask": encoding["attention_mask"],
+            "labels": labels,
+            "context_mask": context_mask,
+        }
+
+    def __len__(self) -> int:
+        return len(self.examples)
+
+    def __getitem__(self, idx: int) -> dict:
+        ex = self.examples[idx]
+        result = {
+            "input_ids": torch.tensor(ex["input_ids"], dtype=torch.long),
+            "attention_mask": torch.tensor(ex["attention_mask"], dtype=torch.long),
+            "labels": torch.tensor(ex["labels"], dtype=torch.long),
+        }
+        if self.noise_augmenter is not None:
+            noisy = self._encode_noisy(self._sentences[idx])
+            result["noisy_input_ids"] = torch.tensor(
+                noisy["input_ids"], dtype=torch.long
+            )
+            result["noisy_attention_mask"] = torch.tensor(
+                noisy["attention_mask"], dtype=torch.long
+            )
+            result["noisy_labels"] = torch.tensor(
+                noisy["labels"], dtype=torch.long
+            )
+        return result
+
+
+def make_collate_fn(pad_token_id: int):
+    """Pad a batch to its own longest sequence (much faster than padding
+    every sentence to max_length)."""
+
+    def collate_batch(batch: Sequence[dict]) -> dict:
+        max_len = max(len(ex["input_ids"]) for ex in batch)
+        n = len(batch)
+        input_ids = torch.full((n, max_len), pad_token_id, dtype=torch.long)
+        attention_mask = torch.zeros((n, max_len), dtype=torch.long)
+        labels = torch.full((n, max_len), -100, dtype=torch.long)
+        context_mask = torch.zeros((n, max_len), dtype=torch.bool)
+
+        has_noisy = "noisy_input_ids" in batch[0]
+        if has_noisy:
+            noisy_max_len = max(len(ex["noisy_input_ids"]) for ex in batch)
+            noisy_input_ids = torch.full((n, noisy_max_len), pad_token_id, dtype=torch.long)
+            noisy_attention_mask = torch.zeros((n, noisy_max_len), dtype=torch.long)
+            noisy_labels = torch.full((n, noisy_max_len), -100, dtype=torch.long)
+
+        for i, ex in enumerate(batch):
+            L = len(ex["input_ids"])
+            input_ids[i, :L] = torch.tensor(ex["input_ids"], dtype=torch.long)
+            attention_mask[i, :L] = torch.tensor(ex["attention_mask"], dtype=torch.long)
+            labels[i, :L] = torch.tensor(ex["labels"], dtype=torch.long)
+            context_mask[i, :L] = torch.tensor(ex["context_mask"], dtype=torch.bool)
+
+            if has_noisy:
+                NL = len(ex["noisy_input_ids"])
+                noisy_input_ids[i, :NL] = torch.tensor(
+                    ex["noisy_input_ids"], dtype=torch.long
+                )
+                noisy_attention_mask[i, :NL] = torch.tensor(
+                    ex["noisy_attention_mask"], dtype=torch.long
+                )
+                noisy_labels[i, :NL] = torch.tensor(
+                    ex["noisy_labels"], dtype=torch.long
+                )
+
+        result = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+            "context_mask": context_mask,
+        }
+        if has_noisy:
+            result.update({
+                "noisy_input_ids": noisy_input_ids,
+                "noisy_attention_mask": noisy_attention_mask,
+                "noisy_labels": noisy_labels,
+            })
+        return result
+
+    return collate_batch

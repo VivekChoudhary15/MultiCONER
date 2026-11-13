@@ -55,6 +55,15 @@ class DataConfig:
     # Leakage-free training context: K-fold KB for train sentences (0/1 = off).
     kb_train_folds: int = 0
 
+    # --- Stage A3: Noise-robust training ---
+    noise_training: bool = False
+    noise_rate: float = 0.3
+    noise_types: str = "typo,swap,drop"
+    coarse_head: bool = False
+    noise_lambda_coarse: float = 0.5
+    noise_lambda_context: float = 0.3
+    noise_lambda_kl: float = 1.0
+
 
 @dataclass
 class ModelConfig:

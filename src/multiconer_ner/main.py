@@ -126,9 +126,39 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--kb-train-folds", type=int, default=0,
-        help="Leakage-free retrieval for TRAIN sentences: split train into K folds; "
-             "a sentence only retrieves KB entries of mentions seen in other folds "
+        help="Leakage-free retrieval for TRAIN sentences: split train into K folds; " 
+             "a sentence only retrieves KB entries of mentions seen in other folds " 
              "(0 = off, plain retrieval as in A1/A2). Dev/test always use the full KB.",
+    )
+    # --- Stage A3: Noise-robust training flags ---
+    parser.add_argument(
+        "--noise-training", action=argparse.BooleanOptionalAction, default=False,
+        help="Enable Stage A3 noise-robust training (character-level corruption + "
+             "KL divergence between clean and noisy predictions).",
+    )
+    parser.add_argument(
+        "--noise-rate", type=float, default=0.3,
+        help="Fraction of entity tokens to corrupt (Stage A3).",
+    )
+    parser.add_argument(
+        "--noise-types", type=str, default="typo,swap,drop",
+        help="Comma-separated noise types: typo,swap,drop (Stage A3).",
+    )
+    parser.add_argument(
+        "--coarse-head", action=argparse.BooleanOptionalAction, default=False,
+        help="Enable auxiliary coarse head (13 tags) for regularization (Stage A3).",
+    )
+    parser.add_argument(
+        "--noise-lambda-coarse", type=float, default=0.5,
+        help="Weight for coarse head loss (Stage A3).",
+    )
+    parser.add_argument(
+        "--noise-lambda-context", type=float, default=0.3,
+        help="Weight for no-context loss (Stage A3).",
+    )
+    parser.add_argument(
+        "--noise-lambda-kl", type=float, default=1.0,
+        help="Weight for KL divergence between clean and noisy predictions (Stage A3).",
     )
     return parser
 
@@ -172,6 +202,15 @@ def main() -> None:
     config.data.skip_low_confidence = args.skip_low_confidence
     config.data.context_filter_mode = args.context_filter_mode
     config.data.kb_train_folds = args.kb_train_folds
+
+    # --- Stage A3: Noise-robust training config ---
+    config.data.noise_training = args.noise_training
+    config.data.noise_rate = args.noise_rate
+    config.data.noise_types = args.noise_types
+    config.data.coarse_head = args.coarse_head
+    config.data.noise_lambda_coarse = args.noise_lambda_coarse
+    config.data.noise_lambda_context = args.noise_lambda_context
+    config.data.noise_lambda_kl = args.noise_lambda_kl
 
     run_pipeline(config)
 

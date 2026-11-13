@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import torch
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -31,7 +32,12 @@ from tqdm import tqdm
 
 from .config import Config, DataConfig, TrainConfig, LogConfig
 from .evaluate import evaluate_predictions
-from .model import MultilingualNER
+from .model import (
+    COARSE_LABEL2ID,
+    FINE_TO_COARSE,
+    MultilingualNER,
+    fine_to_coarse_labels,
+)
 
 
 class Trainer:
@@ -58,6 +64,27 @@ class Trainer:
 
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
+
+        # --- Stage A3: Noise-robust training config ---
+        self.noise_training = bool(self.data_cfg.noise_training)
+        self.noise_rate = self.data_cfg.noise_rate
+        self.lambda_coarse = self.data_cfg.noise_lambda_coarse
+        self.lambda_context = self.data_cfg.noise_lambda_context
+        self.lambda_kl = self.data_cfg.noise_lambda_kl
+        self.coarse_head = self.model.coarse_head is not None
+
+        # Pre-compute fine->coarse label mapping tensor for fast batch conversion.
+        # Index = fine label ID, value = coarse label ID.
+        self._fine_to_coarse_tensor: Optional[torch.Tensor] = None
+        if self.coarse_head and self.id2label:
+            mapping = []
+            for fine_id in sorted(self.id2label.keys()):
+                fine_label = self.id2label[fine_id]
+                coarse_label = FINE_TO_COARSE.get(fine_label, "O")
+                mapping.append(COARSE_LABEL2ID.get(coarse_label, 0))
+            self._fine_to_coarse_tensor = torch.tensor(
+                mapping, dtype=torch.long, device=self.device
+            )
 
         # TensorBoard writer.
         tb_dir = Path(self.log_cfg.tb_dir) / self.log_cfg.experiment_name
@@ -108,6 +135,31 @@ class Trainer:
             for k, v in batch.items()
         }
 
+    def _prepare_a3_batch(self, batch: dict) -> dict:
+        """Add coarse_labels and no_context_mask to a batch for A3 training."""
+        if not self.noise_training:
+            return batch
+
+        batch = dict(batch)  # shallow copy
+
+        # Convert fine labels -> coarse labels for the coarse head.
+        if self._fine_to_coarse_tensor is not None and "labels" in batch:
+            fine_labels = batch["labels"]
+            coarse_labels = self._fine_to_coarse_tensor[fine_labels.view(-1)].view_as(fine_labels)
+            coarse_labels = torch.where(
+                fine_labels == -100,
+                torch.tensor(-100, device=self.device),
+                coarse_labels,
+            )
+            batch["coarse_labels"] = coarse_labels
+
+        # no_context_mask: True for real sentence words (not context, not padding/special).
+        if "context_mask" in batch and "labels" in batch:
+            no_context_mask = (~batch["context_mask"].bool()) & (batch["labels"] != -100)
+            batch["no_context_mask"] = no_context_mask
+
+        return batch
+
     def _train_epoch(self) -> float:
         self.model.train()
         total_loss = 0.0
@@ -116,15 +168,72 @@ class Trainer:
         pbar = tqdm(self.train_loader, desc="train", leave=False)
         for batch in pbar:
             batch = self._move_batch(batch)
+            batch = self._prepare_a3_batch(batch)
             self.optimizer.zero_grad(set_to_none=True)
 
             with self._autocast():
+                # --- Clean forward pass ---
                 out = self.model(
                     input_ids=batch["input_ids"],
                     attention_mask=batch["attention_mask"],
                     labels=batch["labels"],
+                    coarse_labels=batch.get("coarse_labels"),
+                    no_context_mask=batch.get("no_context_mask"),
                 )
-            loss = out["loss"]
+                loss = out["loss"]
+
+                # --- Stage A3: Noisy forward pass + KL divergence ---
+                if self.noise_training and "noisy_input_ids" in batch:
+                    noisy_batch = {
+                        "input_ids": batch["noisy_input_ids"],
+                        "attention_mask": batch["noisy_attention_mask"],
+                        "labels": batch["noisy_labels"],
+                        "coarse_labels": batch.get("noisy_coarse_labels"),
+                        "no_context_mask": batch.get("noisy_no_context_mask"),
+                    }
+                    noisy_batch = self._prepare_a3_batch(noisy_batch)
+                    out_noisy = self.model(
+                        input_ids=noisy_batch["input_ids"],
+                        attention_mask=noisy_batch["attention_mask"],
+                        labels=noisy_batch["labels"],
+                        coarse_labels=noisy_batch.get("coarse_labels"),
+                        no_context_mask=noisy_batch.get("no_context_mask"),
+                    )
+                    loss_noisy = out_noisy["loss"]
+
+                    # KL divergence: make predictions invariant to noise.
+                    # Compute on valid (non -100) positions only.
+                    clean_logits = out["logits"].float()
+                    noisy_logits = out_noisy["logits"].float()
+                    mask = batch["attention_mask"].view(-1).bool()
+                    valid_labels = batch["labels"].view(-1) != -100
+                    valid = mask & valid_labels
+
+                    if valid.any():
+                        clean_probs = F.softmax(
+                            clean_logits.view(-1, self.model.num_labels)[valid], dim=-1
+                        )
+                        noisy_probs = F.softmax(
+                            noisy_logits.view(-1, self.model.num_labels)[valid], dim=-1
+                        )
+                        kl_loss = F.kl_div(
+                            noisy_probs.log(), clean_probs, reduction="batchmean"
+                        )
+                    else:
+                        kl_loss = torch.tensor(0.0, device=self.device)
+
+                    # Combine losses.
+                    loss = (
+                        loss
+                        + self.lambda_kl * kl_loss
+                        + self.lambda_coarse
+                        * out.get("loss_coarse", torch.tensor(0.0, device=self.device))
+                        + self.lambda_context
+                        * out.get("loss_no_context", torch.tensor(0.0, device=self.device))
+                    )
+                else:
+                    kl_loss = torch.tensor(0.0, device=self.device)
+
             if loss is None:
                 continue
             loss.backward()
@@ -148,6 +257,10 @@ class Trainer:
                 self.writer.add_scalar(
                     "train/lr", self.scheduler.get_last_lr()[0], self.global_step
                 )
+                if self.noise_training:
+                    self.writer.add_scalar(
+                        "train/kl_loss", kl_loss.item(), self.global_step
+                    )
 
             if (
                 self.train_cfg.eval_every > 0

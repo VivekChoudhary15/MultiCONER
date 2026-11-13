@@ -32,6 +32,7 @@ from .data import (
 )
 from .evaluate import evaluate_predictions, print_report, save_metrics
 from .inference import predict_split, save_conll_predictions, save_predictions_json
+from .data import NoiseAugmenter
 from .kb import KBIndex
 from .model import MultilingualNER
 from .retriever import Retriever, sentence_mentions
@@ -223,6 +224,21 @@ def run_pipeline(config: Config) -> dict:
                 )
 
     # ------------------------------------------------------------------ #
+    # 3c. Stage A3: Noise augmentation for training (if enabled).
+    # ------------------------------------------------------------------ #
+    noise_augmenter: Optional[NoiseAugmenter] = None
+    if data_cfg.noise_training:
+        noise_augmenter = NoiseAugmenter(
+            noise_rate=data_cfg.noise_rate,
+            noise_types=data_cfg.noise_types,
+            seed=config.train.seed,
+        )
+        logger.info(
+            f"[A3] Noise-robust training enabled: rate={data_cfg.noise_rate}, "
+            f"types={data_cfg.noise_types}, coarse_head={data_cfg.coarse_head}"
+        )
+
+    # ------------------------------------------------------------------ #
     # 4. Combine sentences across languages and build DataLoaders.
     #    If multilingual, the train loader uses LanguageBalancedSampler
     #    (equal probability per language) so high-resource languages do not
@@ -245,6 +261,7 @@ def run_pipeline(config: Config) -> dict:
         context_max_tokens=data_cfg.context_max_tokens,
         language_sampling_temperature=config.train.language_sampling_temperature,
         seed=config.train.seed,
+        noise_augmenter=noise_augmenter,
     )
 
     # ------------------------------------------------------------------ #
