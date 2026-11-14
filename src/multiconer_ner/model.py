@@ -19,6 +19,71 @@ from transformers import AutoModel, AutoConfig, PreTrainedTokenizerBase
 
 
 # --------------------------------------------------------------------------- #
+# Stage A4: Gated Fusion (inspired by DAMO-NLP U-RaNER infusion + PAI entity-aware attention)
+#
+# Architecture:
+#   z = g * k_context + (1 - g) * h_sentence
+#   where g = sigmoid(MLP([h_sentence; context_pooled]))
+#
+# The gate lets the model learn to trust or ignore retrieved context per token.
+# When knowledge is wrong/irrelevant, g -> 0 and the model falls back to
+# sentence-only representations.
+# --------------------------------------------------------------------------- #
+class _GatedFusion(nn.Module):
+    """Gated fusion layer: z = g * k + (1 - g) * h.
+
+    Inspired by DAMO-NLP U-RaNER infusion (post-infusion performed best) and
+    PAI's entity-aware attention mechanism. The gate learns, per token, how
+    much to trust retrieved context vs. the sentence-only representation.
+    """
+
+    def __init__(self, hidden_size: int, gate_hidden: int = 256):
+        super().__init__()
+        self.gate_proj = nn.Linear(hidden_size * 2, gate_hidden)
+        self.gate_act = nn.ReLU()
+        self.gate_out = nn.Linear(gate_hidden, 1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(
+        self,
+        sequence_output: torch.Tensor,
+        context_mask: torch.BoolTensor,
+    ) -> torch.Tensor:
+        """Apply gated fusion to sequence output.
+
+        Args:
+            sequence_output: (B, T, H) backbone hidden states (context + sentence)
+            context_mask: (B, T) bool, True for context token positions
+
+        Returns:
+            fused_output: (B, T, H) with gated fusion applied at sentence positions
+        """
+        B, T, H = sequence_output.shape
+
+        # Pool context: mean over context token positions
+        context_mask_f = context_mask.float().unsqueeze(-1)  # (B, T, 1)
+        context_sum = (sequence_output * context_mask_f).sum(dim=1)  # (B, H)
+        context_count = context_mask.sum(dim=1, keepdim=True).float().clamp(min=1)
+        context_pooled = context_sum / context_count  # (B, H)
+
+        # Expand context pooled to all positions for gate computation
+        context_pooled_expanded = context_pooled.unsqueeze(1).expand(B, T, H)  # (B, T, H)
+
+        # Compute gate: g = sigmoid(MLP([h; k]))
+        gate_input = torch.cat([sequence_output, context_pooled_expanded], dim=-1)  # (B, T, 2H)
+        gate_logits = self.gate_out(self.gate_act(self.gate_proj(gate_input)))  # (B, T, 1)
+        gate = self.sigmoid(gate_logits)  # (B, T, 1)
+
+        # Fuse: z = g * k + (1 - g) * h
+        fused = gate * context_pooled_expanded + (1 - gate) * sequence_output  # (B, T, H)
+
+        # Zero out context positions (only sentence positions matter for NER)
+        fused = fused * (~context_mask).float().unsqueeze(-1)
+
+        return fused
+
+
+# --------------------------------------------------------------------------- #
 # Stage A3: Coarse-to-fine label mapping (67 fine -> 13 coarse tags)
 # --------------------------------------------------------------------------- #
 
@@ -132,6 +197,8 @@ class MultilingualNER(nn.Module):
         use_crf: bool = False,
         freeze_backbone: bool = False,
         coarse_head: bool = False,
+        use_gated_fusion: bool = False,
+        gated_fusion_hidden: int = 256,
     ):
         super().__init__()
         self.model_name = model_name
@@ -139,6 +206,7 @@ class MultilingualNER(nn.Module):
         self.id2label = id2label
         self.label2id = label2id
         self.use_crf = use_crf
+        self.use_gated_fusion = use_gated_fusion
 
         hf_config = AutoConfig.from_pretrained(
             model_name,
@@ -166,6 +234,11 @@ class MultilingualNER(nn.Module):
         self.coarse_head = None
         if coarse_head:
             self.coarse_head = nn.Linear(hf_config.hidden_size, len(COARSE_LABELS))
+
+        # --- Stage A4: Gated fusion layer ---
+        self.gated_fusion = None
+        if use_gated_fusion:
+            self.gated_fusion = _GatedFusion(hf_config.hidden_size, gated_fusion_hidden)
 
         if freeze_backbone:
             for param in self.backbone.parameters():
@@ -205,6 +278,7 @@ class MultilingualNER(nn.Module):
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
+        context_mask: Optional[torch.Tensor] = None,
         coarse_labels: Optional[torch.Tensor] = None,
         no_context_mask: Optional[torch.Tensor] = None,
     ) -> dict:
@@ -213,6 +287,13 @@ class MultilingualNER(nn.Module):
             attention_mask=attention_mask,
         )
         sequence_output = self.dropout(outputs.last_hidden_state)
+
+        # --- Stage A4: Gated fusion ---
+        # Fuse retrieved context with sentence representations via a learned gate.
+        # When context is irrelevant, gate -> 0 and model falls back to h_sentence.
+        if self.use_gated_fusion and self.gated_fusion is not None and context_mask is not None:
+            sequence_output = self.gated_fusion(sequence_output, context_mask)
+
         logits = self.classifier(sequence_output)  # (B, T, num_labels)
 
         # --- Stage A3: Coarse head ---
@@ -317,6 +398,9 @@ class MultilingualNER(nn.Module):
         # CRF weights (if present).
         if self.use_crf and self.crf is not None:
             torch.save(self.crf.state_dict(), output_dir / "crf.bin")
+        # Gated fusion weights (if present).
+        if self.use_gated_fusion and self.gated_fusion is not None:
+            torch.save(self.gated_fusion.state_dict(), output_dir / "gated_fusion.bin")
 
         # Tokenizer.
         tokenizer.save_pretrained(output_dir)
@@ -331,6 +415,7 @@ class MultilingualNER(nn.Module):
             "model_name": self.model_name,
             "num_labels": self.num_labels,
             "use_crf": self.use_crf,
+            "use_gated_fusion": self.use_gated_fusion,
         }
         with open(output_dir / "model_config.json", "w", encoding="utf-8") as f:
             json.dump(model_cfg, f, indent=2)
@@ -350,6 +435,12 @@ class MultilingualNER(nn.Module):
             if not crf_path.exists():
                 raise FileNotFoundError(f"{crf_path} missing (checkpoint trained without CRF?)")
             self.crf.load_state_dict(torch.load(crf_path, map_location="cpu"))
+        # Gated fusion weights.
+        gf_path = ckpt_dir / "gated_fusion.bin"
+        if self.use_gated_fusion and self.gated_fusion is not None:
+            if not gf_path.exists():
+                raise FileNotFoundError(f"{gf_path} missing (checkpoint trained without gated fusion?)")
+            self.gated_fusion.load_state_dict(torch.load(gf_path, map_location="cpu"))
 
     @classmethod
     def load(cls, output_dir: str | Path) -> "MultilingualNER":
@@ -368,6 +459,7 @@ class MultilingualNER(nn.Module):
             id2label=id2label,
             label2id=label2id,
             use_crf=model_cfg.get("use_crf", False),
+            use_gated_fusion=model_cfg.get("use_gated_fusion", False),
         )
         model.model_name = model_cfg["model_name"]
 

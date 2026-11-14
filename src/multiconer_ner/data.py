@@ -379,18 +379,23 @@ class NERDataset(Dataset):
             self.label2id[t] for t in sent.tags
         ]
         labels: List[int] = []
+        context_mask: List[bool] = []
         previous_word_idx: Optional[int] = None
+        n_ctx = len(context_words)
         for word_idx in encoding.word_ids():
             if word_idx is None or word_idx == previous_word_idx:
                 labels.append(-100)
+                context_mask.append(False)
             else:
                 labels.append(all_labels[word_idx])
+                context_mask.append(word_idx < n_ctx)
             previous_word_idx = word_idx
 
         return {
             "input_ids": encoding["input_ids"],
             "attention_mask": encoding["attention_mask"],
             "labels": labels,
+            "context_mask": context_mask,
         }
 
     def __len__(self) -> int:
@@ -417,15 +422,18 @@ def make_collate_fn(pad_token_id: int):
         input_ids = torch.full((n, max_len), pad_token_id, dtype=torch.long)
         attention_mask = torch.zeros((n, max_len), dtype=torch.long)
         labels = torch.full((n, max_len), -100, dtype=torch.long)
+        context_mask = torch.zeros((n, max_len), dtype=torch.bool)
         for i, ex in enumerate(batch):
             L = len(ex[prefix + "input_ids"])
             input_ids[i, :L] = torch.tensor(ex[prefix + "input_ids"], dtype=torch.long)
             attention_mask[i, :L] = torch.tensor(ex[prefix + "attention_mask"], dtype=torch.long)
             labels[i, :L] = torch.tensor(ex[prefix + "labels"], dtype=torch.long)
+            context_mask[i, :L] = torch.tensor(ex[prefix + "context_mask"], dtype=torch.bool)
         return {
             prefix + "input_ids": input_ids,
             prefix + "attention_mask": attention_mask,
             prefix + "labels": labels,
+            prefix + "context_mask": context_mask,
         }
 
     def collate_batch(batch: Sequence[dict]) -> dict:

@@ -160,6 +160,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--noise-lambda-kl", type=float, default=1.0,
         help="Weight for KL divergence between clean and noisy predictions (Stage A3).",
     )
+    # --- Stage A4: Gated fusion flags ---
+    parser.add_argument(
+        "--use-gated-fusion", action=argparse.BooleanOptionalAction, default=False,
+        help="Enable Stage A4 gated fusion: learn to trust/ignore retrieved context "
+             "per token (z = g*k + (1-g)*h).",
+    )
+    parser.add_argument(
+        "--gated-fusion-hidden", type=int, default=256,
+        help="Hidden size for the gated fusion MLP (Stage A4).",
+    )
     return parser
 
 
@@ -211,6 +221,10 @@ def main() -> None:
     config.data.noise_lambda_coarse = args.noise_lambda_coarse
     config.data.noise_lambda_context = args.noise_lambda_context
     config.data.noise_lambda_kl = args.noise_lambda_kl
+
+    # --- Stage A4: Gated fusion config ---
+    config.data.use_gated_fusion = args.use_gated_fusion
+    config.data.gated_fusion_hidden = args.gated_fusion_hidden
 
     run_pipeline(config)
 

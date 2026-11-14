@@ -148,6 +148,7 @@ class Trainer:
             input_ids=input_ids,
             attention_mask=attention_mask,
             labels=labels,
+            context_mask=batch.get("context_mask"),
             coarse_labels=coarse_labels,
             # Extra token-level CE on the sentence words, alongside the CRF loss.
             no_context_mask=(labels != -100) if self.lambda_context > 0 else None,

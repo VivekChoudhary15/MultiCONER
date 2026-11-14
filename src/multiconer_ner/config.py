@@ -64,6 +64,10 @@ class DataConfig:
     noise_lambda_context: float = 0.3
     noise_lambda_kl: float = 1.0
 
+    # --- Stage A4: Gated fusion ---
+    use_gated_fusion: bool = False
+    gated_fusion_hidden: int = 256
+
 
 @dataclass
 class ModelConfig:
